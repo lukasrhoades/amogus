@@ -1,16 +1,21 @@
 import { InMemoryGameSessionRepo } from "../adapters/in-memory/in-memory-game-session-repo";
 import { InMemoryAuthRepo } from "../adapters/in-memory/in-memory-auth-repo";
 import { InMemoryQuestionPairRepo } from "../adapters/in-memory/in-memory-question-pair-repo";
+import { InMemorySettingsPresetRepo } from "../adapters/in-memory/in-memory-settings-preset-repo";
 import { PrismaAuthRepo } from "../adapters/prisma/prisma-auth-repo";
 import { PrismaGameSessionRepo } from "../adapters/prisma/prisma-game-session-repo";
 import { PrismaQuestionPairRepo } from "../adapters/prisma/prisma-question-pair-repo";
+import { PrismaSettingsPresetRepo } from "../adapters/prisma/prisma-settings-preset-repo";
 import { AuthService } from "../application/auth-service";
 import { GameSessionService } from "../application/game-session-service";
 import { QuestionPairService } from "../application/question-pair-service";
+import { SettingsPresetService } from "../application/settings-preset-service";
+import { SettingsPreset } from "../domain/game/settings-preset";
 import { GameState, LobbyId, PlayerId, QuestionPair, QuestionPairId } from "../domain/game/types";
 import { AuthRepo } from "../ports/auth-repo";
 import { GameSessionRepo } from "../ports/game-session-repo";
 import { QuestionPairRepo } from "../ports/question-pair-repo";
+import { SettingsPresetRepo } from "../ports/settings-preset-repo";
 import { getPrismaClient } from "./prisma-client";
 import { LobbyEventBus } from "./realtime/lobby-event-bus";
 
@@ -22,6 +27,7 @@ type Runtime = {
   authService: AuthService;
   gameService: GameSessionService;
   questionPairService: QuestionPairService;
+  settingsPresetService: SettingsPresetService;
   lobbyEvents: LobbyEventBus;
 };
 
@@ -51,7 +57,7 @@ function maybeRunIdleCleanup(runtime: Runtime): void {
 }
 
 function createRuntime(): Runtime {
-  const { authRepo, gameSessionRepo, questionPairRepo } = createRepos();
+  const { authRepo, gameSessionRepo, questionPairRepo, settingsPresetRepo } = createRepos();
   const lobbyEvents = new LobbyEventBus();
   return {
     authService: new AuthService(authRepo),
@@ -65,6 +71,7 @@ function createRuntime(): Runtime {
       questionPairRepo,
     ),
     questionPairService: new QuestionPairService(questionPairRepo),
+    settingsPresetService: new SettingsPresetService(settingsPresetRepo),
     lobbyEvents,
   };
 }
@@ -77,7 +84,12 @@ function getRepoDriverMode(): RepoDriverMode {
   return "auto";
 }
 
-function createRepos(): { authRepo: AuthRepo; gameSessionRepo: GameSessionRepo; questionPairRepo: QuestionPairRepo } {
+function createRepos(): {
+  authRepo: AuthRepo;
+  gameSessionRepo: GameSessionRepo;
+  questionPairRepo: QuestionPairRepo;
+  settingsPresetRepo: SettingsPresetRepo;
+} {
   const driver = getRepoDriverMode();
   if (process.env.NODE_ENV === "production" && driver !== "prisma") {
     throw new Error("Production mode requires GAME_SESSION_REPO=prisma");
@@ -89,6 +101,7 @@ function createRepos(): { authRepo: AuthRepo; gameSessionRepo: GameSessionRepo; 
       authRepo: new PrismaAuthRepo(prisma),
       gameSessionRepo: new PrismaGameSessionRepo(prisma),
       questionPairRepo: new PrismaQuestionPairRepo(prisma),
+      settingsPresetRepo: new PrismaSettingsPresetRepo(prisma),
     };
   }
   if (driver === "auto") {
@@ -106,12 +119,17 @@ function createRepos(): { authRepo: AuthRepo; gameSessionRepo: GameSessionRepo; 
         new PrismaQuestionPairRepo(prisma),
         new InMemoryQuestionPairRepo(),
       ),
+      settingsPresetRepo: new AutoFallbackSettingsPresetRepo(
+        new PrismaSettingsPresetRepo(prisma),
+        new InMemorySettingsPresetRepo(),
+      ),
     };
   }
   return {
     authRepo: new InMemoryAuthRepo(),
     gameSessionRepo: new InMemoryGameSessionRepo(),
     questionPairRepo: new InMemoryQuestionPairRepo(),
+    settingsPresetRepo: new InMemorySettingsPresetRepo(),
   };
 }
 
@@ -287,6 +305,61 @@ class AutoFallbackQuestionPairRepo implements QuestionPairRepo {
       }
       this.useFallback = true;
       return this.fallback.deleteByOwner(ownerId, pairId);
+    }
+  }
+}
+
+class AutoFallbackSettingsPresetRepo implements SettingsPresetRepo {
+  private useFallback = false;
+
+  constructor(
+    private readonly primary: SettingsPresetRepo,
+    private readonly fallback: SettingsPresetRepo,
+  ) {}
+
+  async listByOwner(ownerId: string) {
+    if (this.useFallback) {
+      return this.fallback.listByOwner(ownerId);
+    }
+    try {
+      return await this.primary.listByOwner(ownerId);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      return this.fallback.listByOwner(ownerId);
+    }
+  }
+
+  async upsert(preset: SettingsPreset) {
+    if (this.useFallback) {
+      await this.fallback.upsert(preset);
+      return;
+    }
+    try {
+      await this.primary.upsert(preset);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      await this.fallback.upsert(preset);
+    }
+  }
+
+  async deleteByOwnerAndName(ownerId: string, name: string) {
+    if (this.useFallback) {
+      return this.fallback.deleteByOwnerAndName(ownerId, name);
+    }
+    try {
+      return await this.primary.deleteByOwnerAndName(ownerId, name);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      return this.fallback.deleteByOwnerAndName(ownerId, name);
     }
   }
 }

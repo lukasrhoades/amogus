@@ -7,6 +7,27 @@ type Session = {
   username: string;
 };
 
+type SettingsPreset = {
+  ownerId: string;
+  name: string;
+  config: {
+    plannedRounds: number;
+    roundsCappedByQuestions: boolean;
+    questionReuseEnabled: boolean;
+    impostorWeights: {
+      zero: number;
+      one: number;
+      two: number;
+    };
+    scoring: {
+      impostorSurvivesPoints: number;
+      crewVotesOutImpostorPoints: number;
+      crewVotedOutPenaltyEnabled: boolean;
+      crewVotedOutPenaltyPoints: number;
+    };
+  };
+};
+
 type LobbySnapshot = {
   lobbyId: string;
   status: string;
@@ -142,6 +163,9 @@ export default function HomePage() {
     }>
   >([]);
   const [tieCandidates, setTieCandidates] = useState<string[]>([]);
+  const [settingsPresets, setSettingsPresets] = useState<SettingsPreset[]>([]);
+  const [selectedPresetName, setSelectedPresetName] = useState<string>("DEFAULT");
+  const [newPresetName, setNewPresetName] = useState<string>("FAST");
   const [settingsPlannedRounds, setSettingsPlannedRounds] = useState<number>(10);
   const [settingsRoundsCappedByQuestions, setSettingsRoundsCappedByQuestions] = useState<boolean>(false);
   const [settingsQuestionReuseEnabled, setSettingsQuestionReuseEnabled] = useState<boolean>(false);
@@ -224,11 +248,13 @@ export default function HomePage() {
     setSession(payload.session);
     setMessage(`Logged in as ${payload.session.username} (${payload.session.userId})`);
     await loadQuestionPairs();
+    await loadSettingsPresets();
   }
 
   useEffect(() => {
     if (session !== null) {
       void loadQuestionPairs();
+      void loadSettingsPresets();
     }
   }, [session]);
 
@@ -372,6 +398,20 @@ export default function HomePage() {
     setQuestionPairs(payload.pairs);
   }
 
+  async function loadSettingsPresets() {
+    const response = await fetch("/api/settings-presets", { method: "GET" });
+    if (!response.ok) {
+      setSettingsPresets([]);
+      return;
+    }
+    const payload = (await response.json()) as { presets: SettingsPreset[] };
+    setSettingsPresets(payload.presets);
+    if (payload.presets.some((preset) => preset.name === selectedPresetName)) {
+      return;
+    }
+    setSelectedPresetName(payload.presets[0]?.name ?? "DEFAULT");
+  }
+
   async function createQuestionPair() {
     const response = await fetch("/api/question-pairs", {
       method: "POST",
@@ -491,6 +531,77 @@ export default function HomePage() {
     });
   }
 
+  function applyPresetConfig(config: SettingsPreset["config"]) {
+    setSettingsPlannedRounds(config.plannedRounds);
+    setSettingsRoundsCappedByQuestions(config.roundsCappedByQuestions);
+    setSettingsQuestionReuseEnabled(config.questionReuseEnabled);
+    setSettingsZeroWeight(config.impostorWeights.zero);
+    setSettingsOneWeight(config.impostorWeights.one);
+    setSettingsTwoWeight(config.impostorWeights.two);
+    setSettingsImpostorSurvivePoints(config.scoring.impostorSurvivesPoints);
+    setSettingsCrewCatchPoints(config.scoring.crewVotesOutImpostorPoints);
+    setSettingsPenaltyEnabled(config.scoring.crewVotedOutPenaltyEnabled);
+    setSettingsPenaltyPoints(config.scoring.crewVotedOutPenaltyPoints);
+  }
+
+  async function loadSelectedPresetToForm() {
+    const preset = settingsPresets.find((entry) => entry.name === selectedPresetName);
+    if (preset === undefined) {
+      setMessage("Preset not found.");
+      return;
+    }
+    applyPresetConfig(preset.config);
+    setMessage(`Preset loaded: ${preset.name}`);
+  }
+
+  async function savePreset(name: string) {
+    const response = await fetch("/api/settings-presets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        config: {
+          plannedRounds: settingsPlannedRounds,
+          roundsCappedByQuestions: settingsRoundsCappedByQuestions,
+          questionReuseEnabled: settingsQuestionReuseEnabled,
+          impostorWeights: {
+            zero: settingsZeroWeight,
+            one: settingsOneWeight,
+            two: settingsTwoWeight,
+          },
+          scoring: {
+            impostorSurvivesPoints: settingsImpostorSurvivePoints,
+            crewVotesOutImpostorPoints: settingsCrewCatchPoints,
+            crewVotedOutPenaltyEnabled: settingsPenaltyEnabled,
+            crewVotedOutPenaltyPoints: settingsPenaltyPoints,
+          },
+        },
+      }),
+    });
+    if (!response.ok) {
+      setMessage("Failed to save preset.");
+      return;
+    }
+    await loadSettingsPresets();
+    setSelectedPresetName(name.trim().toUpperCase());
+    setMessage(`Preset saved: ${name.trim().toUpperCase()}`);
+  }
+
+  async function deleteSelectedPreset() {
+    const name = selectedPresetName.trim().toUpperCase();
+    if (name === "DEFAULT") {
+      setMessage("DEFAULT preset cannot be deleted.");
+      return;
+    }
+    const response = await fetch(`/api/settings-presets/${name}`, { method: "DELETE" });
+    if (!response.ok) {
+      setMessage("Failed to delete preset.");
+      return;
+    }
+    await loadSettingsPresets();
+    setMessage(`Preset deleted: ${name}`);
+  }
+
   return (
     <main>
       <div className="container">
@@ -525,6 +636,7 @@ export default function HomePage() {
                 await fetch("/api/session", { method: "DELETE" });
                 setSession(null);
                 setSnapshot(null);
+                setSettingsPresets([]);
                 setMessage("Logged out.");
               }}
             >
@@ -583,6 +695,32 @@ export default function HomePage() {
         {isHost && (snapshot?.phase === "setup" || snapshot?.phase === "round_result") ? (
           <div>
             <h3>Host Settings</h3>
+            <p>
+              Preset:{" "}
+              <select value={selectedPresetName} onChange={(e) => setSelectedPresetName(e.target.value)}>
+                {settingsPresets.map((preset) => (
+                  <option key={preset.name} value={preset.name}>
+                    {preset.name}
+                  </option>
+                ))}
+              </select>{" "}
+              <button type="button" onClick={loadSelectedPresetToForm}>
+                Load Preset
+              </button>{" "}
+              <button type="button" onClick={() => savePreset("DEFAULT")}>
+                Save as DEFAULT
+              </button>{" "}
+              <button type="button" onClick={deleteSelectedPreset}>
+                Delete Preset
+              </button>
+            </p>
+            <p>
+              New preset name:{" "}
+              <input value={newPresetName} onChange={(e) => setNewPresetName(e.target.value)} />{" "}
+              <button type="button" onClick={() => savePreset(newPresetName)}>
+                Save as New Preset
+              </button>
+            </p>
             <p>
               Planned rounds (5-30):{" "}
               <input
