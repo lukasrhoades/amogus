@@ -318,6 +318,20 @@ export default function HomePage() {
     setMessage("Question pair deleted.");
   }
 
+  const me = snapshot?.players.find((p) => p.id === session?.userId) ?? null;
+  const isHost = me?.isHost ?? false;
+  const round = snapshot?.currentRound ?? null;
+  const activePlayerIds = round?.activePlayerIds ?? [];
+  const voteTargets = snapshot?.players.filter((p) => activePlayerIds.includes(p.id) && p.id !== session?.userId) ?? [];
+  const canSubmitAnswer = round?.phase === "prompting" && (snapshot?.viewerRound?.isActive ?? false);
+  const canCastVote = round?.phase === "voting" && activePlayerIds.includes(session?.userId ?? "");
+  const canHostStartRound = isHost && (snapshot?.phase === "setup" || snapshot?.phase === "round_result");
+  const canHostRevealQuestion = isHost && round?.phase === "prompting";
+  const canHostStartDiscussion = isHost && round?.phase === "reveal";
+  const canHostEndDiscussion = isHost && round?.phase === "discussion";
+  const canHostCloseVoting = isHost && round?.phase === "voting";
+  const canHostFinalizeRound = isHost && snapshot?.phase === "round_result";
+
   return (
     <main>
       <div className="container">
@@ -344,6 +358,21 @@ export default function HomePage() {
         </p>
         <p>{session === null ? "No session." : `Session: ${session.username} (${session.userId})`}</p>
         <p>Realtime: {realtimeConnected ? "connected" : "disconnected"}</p>
+        {session !== null ? (
+          <p>
+            <button
+              type="button"
+              onClick={async () => {
+                await fetch("/api/session", { method: "DELETE" });
+                setSession(null);
+                setSnapshot(null);
+                setMessage("Logged out.");
+              }}
+            >
+              Logout
+            </button>
+          </p>
+        ) : null}
 
         <h2>Lobby Setup</h2>
         <p>
@@ -374,51 +403,109 @@ export default function HomePage() {
           </button>
         </p>
 
-        <h2>Round Commands</h2>
+        <h2>Game</h2>
         <p>
-          <button type="button" onClick={startAutoRound}>
-            1) Start Round (Host Auto)
-          </button>{" "}
-          Answer: <input value={answerText} onChange={(e) => setAnswerText(e.target.value)} />{" "}
-          <button type="button" onClick={() => runCommand({ type: "submit_answer", payload: { answer: answerText } })}>
-            2) Submit My Answer
-          </button>
+          Lobby Status: {snapshot?.status ?? "(none)"} | Phase: {snapshot?.phase ?? "(none)"} | Round{" "}
+          {snapshot?.completedRounds ?? 0}/{snapshot?.plannedRounds ?? 0}
         </p>
         <p>
-          <button type="button" onClick={() => runCommand({ type: "reveal_question", payload: {} })}>
-            3) Reveal Question (Host)
-          </button>{" "}
-          <button type="button" onClick={() => runCommand({ type: "start_discussion", payload: {} })}>
-            4) Start Discussion (Host)
-          </button>{" "}
-          <button type="button" onClick={() => runCommand({ type: "end_discussion", payload: {} })}>
-            5) End Discussion (Host)
-          </button>
+          Players:{" "}
+          {(snapshot?.players ?? []).map((p) => `${p.displayName}${p.isHost ? " (host)" : ""}${p.connected ? "" : " (offline)"}`).join(", ")}
         </p>
-        <p>
-          Vote Target: <input value={voteTargetId} onChange={(e) => setVoteTargetId(e.target.value)} />{" "}
-          <button type="button" onClick={() => runCommand({ type: "cast_vote", payload: { targetId: voteTargetId } })}>
-            6) Cast My Vote
-          </button>{" "}
-          <button
-            type="button"
-            onClick={() => runCommand({ type: "close_voting", payload: { allowMissingVotes: false } })}
-          >
-            7) Close Voting (Host)
-          </button>{" "}
-          <button type="button" onClick={() => runCommand({ type: "finalize_round", payload: {} })}>
-            8) Finalize Round (Host)
-          </button>
-        </p>
+        {snapshot?.viewerRound?.isActive ? (
+          <p>
+            Your role: {snapshot.viewerRound.role} | Your prompt: {snapshot.viewerRound.prompt ?? "(none)"}
+          </p>
+        ) : (
+          <p>{snapshot?.viewerRound === null ? "No active round." : "You are sat out this round."}</p>
+        )}
 
+        {round !== null && round.trueQuestion !== null ? <p>True question: {round.trueQuestion}</p> : null}
+        {round !== null && round.revealedAnswers !== null ? (
+          <div>
+            <p>Answers:</p>
+            {round.revealedAnswers.map((entry) => (
+              <p key={entry.playerId}>
+                {entry.displayName}: {entry.answer}
+              </p>
+            ))}
+          </div>
+        ) : null}
+        {round !== null && round.revealedRoles !== null ? (
+          <div>
+            <p>Roles:</p>
+            {Object.entries(round.revealedRoles).map(([playerId, role]) => (
+              <p key={playerId}>
+                {snapshot?.players.find((p) => p.id === playerId)?.displayName ?? playerId}: {role}
+              </p>
+            ))}
+          </div>
+        ) : null}
+
+        <h2>Actions</h2>
         <p>{message}</p>
-
-        <h2>My Round View</h2>
-        <pre>
-          {snapshot?.viewerRound === null || snapshot?.viewerRound === undefined
-            ? "(none)"
-            : JSON.stringify(snapshot.viewerRound, null, 2)}
-        </pre>
+        <p>
+          {canHostStartRound ? (
+            <button type="button" onClick={startAutoRound}>
+              Start Round (Host)
+            </button>
+          ) : null}{" "}
+          {canSubmitAnswer ? (
+            <>
+              Answer: <input value={answerText} onChange={(e) => setAnswerText(e.target.value)} />{" "}
+              <button type="button" onClick={() => runCommand({ type: "submit_answer", payload: { answer: answerText } })}>
+                Submit Answer
+              </button>
+            </>
+          ) : null}
+        </p>
+        <p>
+          {canHostRevealQuestion ? (
+            <button type="button" onClick={() => runCommand({ type: "reveal_question", payload: {} })}>
+              Reveal Question (Host)
+            </button>
+          ) : null}{" "}
+          {canHostStartDiscussion ? (
+            <button type="button" onClick={() => runCommand({ type: "start_discussion", payload: {} })}>
+              Start Discussion (Host)
+            </button>
+          ) : null}{" "}
+          {canHostEndDiscussion ? (
+            <button type="button" onClick={() => runCommand({ type: "end_discussion", payload: {} })}>
+              End Discussion (Host)
+            </button>
+          ) : null}
+        </p>
+        <p>
+          {canCastVote ? (
+            <>
+              Vote Target:{" "}
+              <select value={voteTargetId} onChange={(e) => setVoteTargetId(e.target.value)}>
+                {voteTargets.map((target) => (
+                  <option key={target.id} value={target.id}>
+                    {target.displayName}
+                  </option>
+                ))}
+              </select>{" "}
+              <button type="button" onClick={() => runCommand({ type: "cast_vote", payload: { targetId: voteTargetId } })}>
+                Cast Vote
+              </button>
+            </>
+          ) : null}{" "}
+          {canHostCloseVoting ? (
+            <button
+              type="button"
+              onClick={() => runCommand({ type: "close_voting", payload: { allowMissingVotes: false } })}
+            >
+              Close Voting (Host)
+            </button>
+          ) : null}{" "}
+          {canHostFinalizeRound ? (
+            <button type="button" onClick={() => runCommand({ type: "finalize_round", payload: {} })}>
+              Finalize Round (Host)
+            </button>
+          ) : null}
+        </p>
 
         <h2>My Question Pairs</h2>
         <p>
@@ -452,8 +539,6 @@ export default function HomePage() {
           </p>
         ))}
 
-        <h2>Lobby Snapshot</h2>
-        <pre>{snapshot === null ? "(none)" : JSON.stringify(snapshot, null, 2)}</pre>
       </div>
     </main>
   );
