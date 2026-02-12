@@ -15,6 +15,7 @@ import {
   closeVotingAndResolve,
   endDiscussion,
   finalizeRound,
+  setPlayerConnection,
   revealQuestion,
   startDiscussion,
   startRound,
@@ -211,6 +212,25 @@ export class GameSessionService {
     }
 
     const next = cancelCurrentRoundBeforeReveal(stateResult.value, reason);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+
+    await this.repo.save(next.value);
+    return ok(next.value);
+  }
+
+  async setPlayerConnection(
+    lobbyId: LobbyId,
+    playerId: PlayerId,
+    connected: boolean,
+  ): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+
+    const next = setPlayerConnection(stateResult.value, playerId, connected);
     if (!next.ok) {
       return fromDomain(next);
     }

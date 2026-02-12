@@ -219,4 +219,70 @@ describe("game command route", () => {
     expect(closeResponse.status).toBe(400);
     expect(closeJson.error).toBe("missing_tiebreak");
   });
+
+  it("cancels a prompting round and returns to setup", async () => {
+    await seedDemoLobby();
+    await postCommand("demo-lobby", {
+      type: "start_round",
+      payload: {
+        selection: {
+          questionPair: {
+            id: "q-route-4",
+            ownerId: "p1",
+            canonicalQuestion: "What is your favorite hobby?",
+            impostorQuestion: "What is your favorite sport?",
+          },
+          impostorCount: 1,
+        },
+        roundPolicy: {
+          eligibilityEnabled: true,
+          allowVoteChanges: true,
+        },
+        roleAssignment: {
+          p2: "impostor",
+          p3: "crew",
+          p4: "crew",
+          p5: "crew",
+        },
+      },
+    });
+
+    const response = await postCommand("demo-lobby", {
+      type: "cancel_round",
+      payload: {
+        reason: "admin_skip",
+      },
+    });
+    const json = (await response.json()) as {
+      ok: boolean;
+      state: { phase: string; hasCurrentRound: boolean };
+    };
+
+    expect(response.status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(json.state.phase).toBe("setup");
+    expect(json.state.hasCurrentRound).toBe(false);
+  });
+
+  it("updates player connection via admin command", async () => {
+    await seedDemoLobby();
+
+    const response = await postCommand("demo-lobby", {
+      type: "set_player_connection",
+      payload: {
+        playerId: "p4",
+        connected: false,
+      },
+    });
+    const json = (await response.json()) as {
+      ok: boolean;
+      state: { players: Array<{ id: string; connected: boolean }> };
+    };
+
+    expect(response.status).toBe(200);
+    expect(json.ok).toBe(true);
+
+    const p4 = json.state.players.find((player) => player.id === "p4");
+    expect(p4?.connected).toBe(false);
+  });
 });

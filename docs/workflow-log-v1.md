@@ -98,7 +98,9 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - successful `start_round` command transitions lobby to prompting phase
 - full round lifecycle via command API reaches `setup` with expected scoring
 - tie on `close_voting` without tiebreak loser returns `missing_tiebreak` (`400`)
-- Latest result: `20` tests passing.
+- admin cancel-round flow returns lobby to setup phase
+- admin set-player-connection flow updates player connection state
+- Latest result: `22` tests passing.
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -114,9 +116,6 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 ## 13. Final Risks And Follow-Ups
 - Next.js scaffold exists with minimal API boundaries and demo seed/read flow.
 - Boundary validation and auth not implemented yet.
-- Need tests for remaining scoring branches (`0 impostor`, `2 impostor`) and winner-tiebreak function.
-- Need expanded boundary-layer validation coverage for command endpoints (only read/seed routes exist).
 - Need websocket transport and auth integration.
 - In-memory game store resets on server restart; persistence adapter still pending.
-- Need broader API integration coverage for remaining command flows (`submit_answer`, voting, finalize, cancel).
-- Remaining API coverage gap is mostly cancel/disconnect host-admin scenarios.
+- Host-transfer/disconnect timeout policies are still unimplemented at domain/application level.

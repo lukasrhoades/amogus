@@ -78,6 +78,13 @@ const commandSchema = z.discriminatedUnion("type", [
       ]),
     }),
   }),
+  z.object({
+    type: z.literal("set_player_connection"),
+    payload: z.object({
+      playerId: z.string().min(1),
+      connected: z.boolean(),
+    }),
+  }),
 ]);
 
 type Command = z.infer<typeof commandSchema>;
@@ -133,6 +140,8 @@ async function runCommand(lobbyId: string, command: Command) {
       return service.finalizeRound(lobbyId);
     case "cancel_round":
       return service.cancelCurrentRoundBeforeReveal(lobbyId, command.payload.reason);
+    case "set_player_connection":
+      return service.setPlayerConnection(lobbyId, command.payload.playerId, command.payload.connected);
     default: {
       const exhausted: never = command;
       return exhausted;
