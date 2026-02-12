@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRuntime } from "../../../../server/runtime";
+import { serializeGameState } from "../../../../server/serialize-game-state";
 
 const paramsSchema = z.object({
   lobbyId: z.string().min(1),
@@ -35,19 +36,5 @@ export async function GET(
     );
   }
 
-  return NextResponse.json({
-    lobbyId: state.value.lobbyId,
-    status: state.value.status,
-    phase: state.value.phase,
-    completedRounds: state.value.completedRounds,
-    plannedRounds: state.value.settings.plannedRounds,
-    players: Object.values(state.value.players).map((player) => ({
-      id: player.id,
-      displayName: player.displayName,
-      connected: player.connected,
-      isHost: player.isHost,
-    })),
-    scoreboard: state.value.scoreboard,
-    hasCurrentRound: state.value.currentRound !== null,
-  });
+  return NextResponse.json(serializeGameState(state.value));
 }

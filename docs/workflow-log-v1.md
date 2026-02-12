@@ -19,6 +19,8 @@ Implemented in:
 - `src/application/game-session-service.ts`
 - `src/ports/game-session-repo.ts`
 - `src/adapters/in-memory/in-memory-game-session-repo.ts`
+- `src/app/api/games/[lobbyId]/commands/route.ts`
+- `src/server/serialize-game-state.ts`
 
 DSL-style commands (pure domain transitions):
 - `createInitialGameState`
@@ -44,6 +46,9 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Command: `npm run typecheck`
 - Result: pass.
 - Re-run after adding application/ports layer: pass.
+- Re-run after adding Next.js command API boundary + UI hooks: pass.
+- Command: `npm run build`
+- Result: pass.
 
 ## 7. Boundary Safety Checks
 - Deferred to boundary adapters (`zod` schemas and API/socket ingress) once web layer is scaffolded.
@@ -80,6 +85,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - canceled-round round-cap behavior with question reuse ON/OFF
 - Command: `npm test`
 - Result: pass (`10` tests across 2 files).
+- API command route currently validated by typecheck/build (no route integration tests yet).
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -98,3 +104,4 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Need tests for remaining scoring branches (`0 impostor`, `2 impostor`) and winner-tiebreak function.
 - Need expanded boundary-layer validation coverage for command endpoints (only read/seed routes exist).
 - Need websocket transport and auth integration.
+- In-memory game store resets on server restart; persistence adapter still pending.
