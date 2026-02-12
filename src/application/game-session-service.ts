@@ -94,6 +94,14 @@ export class GameSessionService {
     await this.saveAndNotify(state);
   }
 
+  async deleteLobby(lobbyId: LobbyId): Promise<ServiceResult<{ deleted: true }>> {
+    const deleted = await this.repo.deleteByLobbyId(lobbyId);
+    if (!deleted) {
+      return err("game_not_found", `Lobby ${lobbyId} was not found`);
+    }
+    return ok({ deleted: true });
+  }
+
   async get(lobbyId: LobbyId): Promise<ServiceResult<GameState>> {
     const state = await this.repo.getByLobbyId(lobbyId);
     if (state === null) {

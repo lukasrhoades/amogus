@@ -11,4 +11,8 @@ export class InMemoryGameSessionRepo implements GameSessionRepo {
   async save(state: GameState): Promise<void> {
     this.store.set(state.lobbyId, state);
   }
+
+  async deleteByLobbyId(lobbyId: LobbyId): Promise<boolean> {
+    return this.store.delete(lobbyId);
+  }
 }

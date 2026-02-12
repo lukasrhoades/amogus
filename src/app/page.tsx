@@ -178,6 +178,19 @@ export default function HomePage() {
     await loadLobby(activeLobbyId);
   }
 
+  async function deleteLobby() {
+    const response = await fetch(`/api/lobbies/${activeLobbyId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      const payload = (await response.json()) as { error: string; message?: string };
+      setMessage(`Delete failed: ${payload.error} (${payload.message ?? ""})`);
+      return;
+    }
+    setSnapshot(null);
+    setMessage(`Lobby ${activeLobbyId} deleted.`);
+  }
+
   async function loadLobby(lobbyId: string = activeLobbyId) {
     const response = await fetch(`/api/games/${lobbyId}`, { method: "GET" });
     if (!response.ok) {
@@ -294,6 +307,9 @@ export default function HomePage() {
           </button>{" "}
           <button type="button" onClick={joinLobby}>
             Join Active Lobby
+          </button>{" "}
+          <button type="button" onClick={deleteLobby}>
+            Delete Active Lobby (Host)
           </button>
         </p>
         <p>

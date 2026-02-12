@@ -134,6 +134,22 @@ class AutoFallbackGameSessionRepo implements GameSessionRepo {
       await this.fallback.save(state);
     }
   }
+
+  async deleteByLobbyId(lobbyId: LobbyId): Promise<boolean> {
+    if (this.useFallback) {
+      return this.fallback.deleteByLobbyId(lobbyId);
+    }
+
+    try {
+      return await this.primary.deleteByLobbyId(lobbyId);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      return this.fallback.deleteByLobbyId(lobbyId);
+    }
+  }
 }
 
 class AutoFallbackQuestionPairRepo implements QuestionPairRepo {

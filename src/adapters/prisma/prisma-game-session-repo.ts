@@ -30,4 +30,11 @@ export class PrismaGameSessionRepo implements GameSessionRepo {
       },
     });
   }
+
+  async deleteByLobbyId(lobbyId: LobbyId): Promise<boolean> {
+    const result = await this.prisma.gameSession.deleteMany({
+      where: { lobbyId },
+    });
+    return result.count > 0;
+  }
 }
