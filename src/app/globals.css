@@ -34,6 +34,17 @@ h2 {
   margin-top: 0;
 }
 
+h2 {
+  margin-top: 1.2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eaecf0;
+}
+
+p {
+  line-height: 1.45;
+  margin: 0.55rem 0;
+}
+
 pre {
   overflow-x: auto;
   padding: 0.75rem;
@@ -55,4 +66,21 @@ button {
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+input,
+select {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  margin-right: 0.3rem;
+  background: #fff;
+}
+
+.phase-guide {
+  background: #eef4ff;
+  border: 1px solid #c9d8ff;
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  font-weight: 600;
 }

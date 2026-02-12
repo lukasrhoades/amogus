@@ -192,3 +192,17 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Data model migration still required to move question pairs from fixed fields (`canonicalQuestion`, `impostorQuestion`) to prompt-target representation with validation invariant for crew/impostor permissibility.
 - UI now supports question-pair CRUD and host `start_round_auto`; presentation and role-specific prompt rendering are still prototype-level and need round-view polish.
 - Login-based identity is now in place; migration still required in local DB for `User` and `AuthSession` tables before Prisma mode runtime can authenticate users.
+
+## 14. Friend-Ready Slice (UI + Deployment)
+- Added invite-link flow in `src/app/page.tsx`:
+- read `?lobby=` on load
+- keep URL `lobby` query in sync with selected lobby
+- copy invite link button for quick sharing
+- Added phase guidance and progress visibility in UI:
+- contextual "what to do now" message by phase/role
+- answer progress and vote progress counters
+- Added light form/readability polish in `src/app/globals.css`.
+- Added deployment script and docs:
+- `package.json` script: `prisma:migrate:deploy`
+- `README.md` with local run and hosted deployment steps
+- `.env.example` with `DATABASE_URL` and `GAME_SESSION_REPO` defaults.

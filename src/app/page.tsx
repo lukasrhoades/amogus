@@ -197,6 +197,12 @@ export default function HomePage() {
   const [nowMs, setNowMs] = useState<number>(Date.now());
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const lobbyParam = params.get("lobby");
+    if (lobbyParam !== null && lobbyParam.trim().length > 0) {
+      setActiveLobbyId(lobbyParam.trim());
+    }
+
     const run = async () => {
       const response = await fetch("/api/session", { method: "GET" });
       if (!response.ok) {
@@ -211,6 +217,15 @@ export default function HomePage() {
 
     void run();
   }, []);
+
+  useEffect(() => {
+    if (activeLobbyId.trim() === "") {
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("lobby", activeLobbyId.trim());
+    window.history.replaceState({}, "", url.toString());
+  }, [activeLobbyId]);
 
   useEffect(() => {
     if (activeLobbyId.trim() === "") {
@@ -264,7 +279,7 @@ export default function HomePage() {
 
     const payload = (await response.json()) as { session: Session };
     setSession(payload.session);
-    setMessage(`Logged in as ${payload.session.username} (${payload.session.userId})`);
+    setMessage(`Logged in as ${payload.session.username}.`);
     await loadQuestionPairs();
     await loadSettingsPresets();
   }
@@ -315,6 +330,21 @@ export default function HomePage() {
 
     setMessage(`Joined ${activeLobbyId}.`);
     await loadLobby(activeLobbyId);
+  }
+
+  async function copyInviteLink() {
+    if (activeLobbyId.trim() === "") {
+      setMessage("Set a lobby ID before copying invite link.");
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("lobby", activeLobbyId.trim());
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      setMessage("Invite link copied.");
+    } catch {
+      setMessage("Clipboard unavailable. Copy URL from browser bar.");
+    }
   }
 
   async function deleteLobby() {
@@ -492,6 +522,53 @@ export default function HomePage() {
   const hasValidVoteTarget = voteTargets.some((target) => target.id === voteTargetId);
   const connectedPlayers = (snapshot?.players ?? []).filter((player) => player.connected);
   const canHostAttemptStartRound = canHostStartRound && connectedPlayers.length >= 4;
+  const roundAnswerProgress =
+    round === null ? null : `${round.answersSubmittedBy.length}/${round.activePlayerIds.length}`;
+  const roundVoteProgress =
+    round === null ? null : `${round.votesSubmittedBy.length}/${round.activePlayerIds.length}`;
+
+  const phaseInstruction = (() => {
+    if (session === null) {
+      return "Create an account or log in to start.";
+    }
+    if (snapshot === null) {
+      return "Join or create a lobby, then invite your friends.";
+    }
+    if (snapshot.phase === "setup") {
+      return isHost
+        ? "Pick settings, then start the next round when at least 4 players are connected."
+        : "Wait for the host to start the round.";
+    }
+    if (round === null) {
+      return "Round state is syncing.";
+    }
+    if (round.phase === "prompting") {
+      if (snapshot.viewerRound?.isActive) {
+        return "Submit your answer. The round advances when all active players submit.";
+      }
+      return "You are sat out this round. Wait for answer collection to finish.";
+    }
+    if (round.phase === "reveal") {
+      return isHost
+        ? "Reveal answers one by one, then start discussion."
+        : "Watch answer reveals and discuss out loud.";
+    }
+    if (round.phase === "discussion") {
+      return "Discuss with the group. Host can end or extend discussion time.";
+    }
+    if (round.phase === "voting") {
+      return snapshot.viewerRound?.isActive
+        ? "Vote for who you think is impostor. Voting is mandatory."
+        : "Wait for active players to finish voting.";
+    }
+    if (snapshot.phase === "round_result") {
+      return isHost ? "Finalize the round to continue." : "Round result is ready. Waiting for host.";
+    }
+    if (snapshot.phase === "game_over") {
+      return isHost ? "Use Play Again to restart this lobby." : "Game over.";
+    }
+    return "Follow host instructions.";
+  })();
 
   useEffect(() => {
     if (voteTargets.length === 0) {
@@ -732,6 +809,9 @@ export default function HomePage() {
           <button type="button" onClick={() => loadLobby(activeLobbyId)}>
             Refresh
           </button>{" "}
+          <button type="button" onClick={copyInviteLink} disabled={activeLobbyId.trim().length < 1}>
+            Copy Invite Link
+          </button>{" "}
           <button type="button" onClick={() => runCommand({ type: "leave_lobby", payload: {} })}>
             Leave
           </button>
@@ -923,6 +1003,7 @@ export default function HomePage() {
         ) : null}
 
         <h2>Round</h2>
+        <p className="phase-guide">{phaseInstruction}</p>
         <p>
           Lobby Status: {snapshot?.status ?? "(none)"} | Phase: {snapshot?.phase ?? "(none)"} | Round{" "}
           {snapshot?.completedRounds ?? 0}/{snapshot?.plannedRounds ?? 0}
@@ -996,6 +1077,8 @@ export default function HomePage() {
               : `${Math.max(0, Math.ceil((round.discussionDeadlineMs - nowMs) / 1000))}s remaining`}
           </p>
         ) : null}
+        {round?.phase === "prompting" ? <p>Answer progress: {roundAnswerProgress}</p> : null}
+        {round?.phase === "voting" ? <p>Vote progress: {roundVoteProgress}</p> : null}
 
         <h2>Actions</h2>
         <p>{message}</p>
