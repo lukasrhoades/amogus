@@ -21,6 +21,10 @@ Implemented in:
 - `src/adapters/in-memory/in-memory-game-session-repo.ts`
 - `src/app/api/games/[lobbyId]/commands/route.ts`
 - `src/server/serialize-game-state.ts`
+- `src/adapters/prisma/prisma-game-session-repo.ts`
+- `src/adapters/prisma/game-state-json.ts`
+- `src/server/prisma-client.ts`
+- `prisma/schema.prisma`
 
 DSL-style commands (pure domain transitions):
 - `createInitialGameState`
@@ -53,6 +57,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Command: `npm run build`
 - Result: pass.
 - Re-run after adding scoring/tiebreak branch tests and telemetry-disabled scripts: pass.
+- Re-run after Prisma adapter integration and mapping tests: pass.
 
 ## 7. Boundary Safety Checks
 - Deferred to boundary adapters (`zod` schemas and API/socket ingress) once web layer is scaffolded.
@@ -68,8 +73,12 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - `zod@4.3.6`
 - `@types/react@19.2.14`
 - `@types/react-dom@19.2.3`
+- `prisma@6.19.2`
+- `@prisma/client@6.19.2`
 - Command: `npm ls --depth=0`
 - Result: confirms installed versions above.
+- Command: `npm ls prisma @prisma/client`
+- Result: both installed and aligned at `6.19.2`.
 - Command: `npm audit --omit=dev`
 - Result: `found 0 vulnerabilities`.
 - Command: `npm audit`
@@ -81,6 +90,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 ## 9. Test Results
 - Added tests in `src/domain/game/state-machine.test.ts`.
 - Added service orchestration tests in `src/application/game-session-service.test.ts`.
+- Added Prisma mapping tests in `src/adapters/prisma/game-state-json.test.ts`.
 - Coverage focus:
 - eligibility sit-out behavior for 4 vs 5 players
 - self-vote prohibition
@@ -107,6 +117,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - host timeout command ends lobby when connected count falls below 4
 - extended host pause mode (1 hour watchdog) delays timeout end condition
 - Latest result: `29` tests passing.
+- Latest result: `30` tests passing.
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -124,5 +135,6 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Boundary validation and auth not implemented yet.
 - Need websocket transport and auth integration.
 - In-memory game store resets on server restart; persistence adapter still pending.
+- Runtime now supports repo driver switch (`GAME_SESSION_REPO=memory|prisma`); Prisma adapter implemented.
 - Host-transfer/disconnect timeout policies are still unimplemented at domain/application level.
 - Host pause-extension behavior is implemented for host-disconnect pause flow.
