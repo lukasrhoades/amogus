@@ -95,6 +95,12 @@ describe("GameSessionService", () => {
     expect(state.ok).toBe(true);
     if (!state.ok) return;
 
+    for (const _ of ["a", "b", "c", "d"] as const) {
+      state = await service.revealNextAnswer("l1");
+      expect(state.ok).toBe(true);
+      if (!state.ok) return;
+    }
+
     state = await service.startDiscussion("l1");
     expect(state.ok).toBe(true);
     if (!state.ok) return;

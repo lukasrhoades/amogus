@@ -94,6 +94,7 @@ export type RoundState = {
   satOutPlayerId: PlayerId | null;
   roles: RoundRoleAssignment;
   answers: Partial<Record<PlayerId, string>>;
+  revealedAnswerCount: number;
   votes: Partial<Record<PlayerId, PlayerId>>;
   eliminatedPlayerId: PlayerId | null;
 };

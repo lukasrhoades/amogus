@@ -10,6 +10,7 @@ import {
   createInitialGameState,
   endDiscussion,
   finalizeRound,
+  revealNextAnswer,
   revealQuestion,
   startDiscussion,
   startRound,
@@ -83,6 +84,18 @@ function expectOk<T>(result: { ok: true; value: T } | { ok: false; error: { mess
     throw new Error(result.error.message);
   }
   return result.value;
+}
+
+function revealAllAnswers(state: ReturnType<typeof createInitialGameState>) {
+  if (state.currentRound === null) {
+    throw new Error("Round not started");
+  }
+
+  return state.currentRound.activePlayerIds.reduce((acc) => {
+    const result = revealNextAnswer(acc);
+    if (!result.ok) throw new Error(result.error.message);
+    return result.value;
+  }, state);
 }
 
 describe("startRound eligibility behavior", () => {
@@ -160,7 +173,8 @@ describe("voting constraints and tie resolution", () => {
     let state = submitAllAnswers(started.value);
     const revealed = revealQuestion(state);
     if (!revealed.ok) throw new Error(revealed.error.message);
-    const discussion = startDiscussion(revealed.value);
+    const withAnswersRevealed = revealAllAnswers(revealed.value);
+    const discussion = startDiscussion(withAnswersRevealed);
     if (!discussion.ok) throw new Error(discussion.error.message);
     const voting = endDiscussion(discussion.value);
     if (!voting.ok) throw new Error(voting.error.message);
@@ -192,6 +206,7 @@ describe("voting constraints and tie resolution", () => {
 
     let state = submitAllAnswers(started.value);
     state = expectOk(revealQuestion(state));
+    state = revealAllAnswers(state);
     state = expectOk(startDiscussion(state));
     state = expectOk(endDiscussion(state));
 
@@ -237,6 +252,7 @@ describe("scoring", () => {
 
     let state = submitAllAnswers(started.value);
     state = expectOk(revealQuestion(state));
+    state = revealAllAnswers(state);
     state = expectOk(startDiscussion(state));
     state = expectOk(endDiscussion(state));
     state = expectOk(castVote(state, "p1", "p2"));
@@ -280,6 +296,7 @@ describe("scoring", () => {
 
     let state = submitAllAnswers(started.value);
     state = expectOk(revealQuestion(state));
+    state = revealAllAnswers(state);
     state = expectOk(startDiscussion(state));
     state = expectOk(endDiscussion(state));
     state = expectOk(castVote(state, "p1", "p2"));
@@ -319,6 +336,7 @@ describe("scoring", () => {
 
     let state = submitAllAnswers(started.value);
     state = expectOk(revealQuestion(state));
+    state = revealAllAnswers(state);
     state = expectOk(startDiscussion(state));
     state = expectOk(endDiscussion(state));
     state = expectOk(castVote(state, "p1", "p2"));
@@ -358,6 +376,7 @@ describe("scoring", () => {
 
     let state = submitAllAnswers(started.value);
     state = expectOk(revealQuestion(state));
+    state = revealAllAnswers(state);
     state = expectOk(startDiscussion(state));
     state = expectOk(endDiscussion(state));
     state = expectOk(castVote(state, "p1", "p3"));
@@ -396,6 +415,7 @@ describe("scoring", () => {
 
     let state = submitAllAnswers(started.value);
     state = expectOk(revealQuestion(state));
+    state = revealAllAnswers(state);
     state = expectOk(startDiscussion(state));
     state = expectOk(endDiscussion(state));
     state = expectOk(castVote(state, "p1", "p3"));

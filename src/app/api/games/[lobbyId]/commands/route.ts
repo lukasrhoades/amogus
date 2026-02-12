@@ -67,6 +67,10 @@ const commandSchema = z.discriminatedUnion("type", [
     payload: z.object({}),
   }),
   z.object({
+    type: z.literal("reveal_next_answer"),
+    payload: z.object({}),
+  }),
+  z.object({
     type: z.literal("end_discussion"),
     payload: z.object({}),
   }),
@@ -166,6 +170,7 @@ function isHostOnlyCommand(commandType: Command["type"]): boolean {
     commandType === "start_round" ||
     commandType === "start_round_auto" ||
     commandType === "reveal_question" ||
+    commandType === "reveal_next_answer" ||
     commandType === "start_discussion" ||
     commandType === "end_discussion" ||
     commandType === "close_voting" ||
@@ -208,6 +213,8 @@ async function runCommand(lobbyId: string, command: Command, sessionPlayerId: st
       return service.revealQuestion(lobbyId);
     case "start_discussion":
       return service.startDiscussion(lobbyId);
+    case "reveal_next_answer":
+      return service.revealNextAnswer(lobbyId);
     case "end_discussion":
       return service.endDiscussion(lobbyId);
     case "cast_vote":

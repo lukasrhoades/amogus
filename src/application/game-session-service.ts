@@ -21,6 +21,7 @@ import {
   finalizeRound,
   removePlayer,
   setPlayerConnection,
+  revealNextAnswer,
   revealQuestion,
   extendHostDisconnectPause,
   startDiscussion,
@@ -312,6 +313,21 @@ export class GameSessionService {
     }
 
     const next = startDiscussion(stateResult.value);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+
+    await this.saveAndNotify(next.value);
+    return ok(next.value);
+  }
+
+  async revealNextAnswer(lobbyId: LobbyId): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+
+    const next = revealNextAnswer(stateResult.value);
     if (!next.ok) {
       return fromDomain(next);
     }

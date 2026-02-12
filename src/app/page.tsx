@@ -28,7 +28,9 @@ type LobbySnapshot = {
     activePlayerIds: string[];
     satOutPlayerId: string | null;
     answersCount: number;
+    revealedAnswerCount: number;
     votesCount: number;
+    votesSubmittedBy: string[];
     eliminatedPlayerId: string | null;
     trueQuestion: string | null;
     alternativeQuestion: string | null;
@@ -71,6 +73,7 @@ type CommandPayload =
   | { type: "submit_answer"; payload: { answer: string } }
   | { type: "reveal_question"; payload: Record<string, never> }
   | { type: "start_discussion"; payload: Record<string, never> }
+  | { type: "reveal_next_answer"; payload: Record<string, never> }
   | { type: "end_discussion"; payload: Record<string, never> }
   | { type: "cast_vote"; payload: { targetId: string } }
   | { type: "close_voting"; payload: { allowMissingVotes: boolean; tieBreakLoserId?: string } }
@@ -358,7 +361,14 @@ export default function HomePage() {
   const canCastVote = round?.phase === "voting" && activePlayerIds.includes(session?.userId ?? "");
   const canHostStartRound = isHost && (snapshot?.phase === "setup" || snapshot?.phase === "round_result");
   const canHostRevealQuestion = isHost && round?.phase === "prompting";
-  const canHostStartDiscussion = isHost && round?.phase === "reveal";
+  const canHostRevealNextAnswer =
+    isHost &&
+    round?.phase === "reveal" &&
+    round.revealedAnswerCount < round.activePlayerIds.length;
+  const canHostStartDiscussion =
+    isHost &&
+    round?.phase === "reveal" &&
+    round.revealedAnswerCount >= round.activePlayerIds.length;
   const canHostEndDiscussion = isHost && round?.phase === "discussion";
   const canHostCloseVoting = isHost && round?.phase === "voting";
   const canHostFinalizeRound = isHost && snapshot?.phase === "round_result";
@@ -501,12 +511,36 @@ export default function HomePage() {
               Start Discussion (Host)
             </button>
           ) : null}{" "}
+          {canHostRevealNextAnswer ? (
+            <button type="button" onClick={() => runCommand({ type: "reveal_next_answer", payload: {} })}>
+              Reveal Next Answer (Host)
+            </button>
+          ) : null}{" "}
           {canHostEndDiscussion ? (
             <button type="button" onClick={() => runCommand({ type: "end_discussion", payload: {} })}>
               End Discussion (Host)
             </button>
           ) : null}
         </p>
+        {round?.phase === "reveal" ? (
+          <p>
+            Revealed answers: {round.revealedAnswerCount}/{round.activePlayerIds.length}
+          </p>
+        ) : null}
+        {isHost && round?.phase === "voting" ? (
+          <div>
+            <p>Vote status (host only):</p>
+            {round.activePlayerIds.map((playerId) => {
+              const displayName = snapshot?.players.find((p) => p.id === playerId)?.displayName ?? playerId;
+              const voted = round.votesSubmittedBy.includes(playerId);
+              return (
+                <p key={playerId}>
+                  {displayName}: {voted ? "voted" : "waiting"}
+                </p>
+              );
+            })}
+          </div>
+        ) : null}
         <p>
           {canCastVote ? (
             <>

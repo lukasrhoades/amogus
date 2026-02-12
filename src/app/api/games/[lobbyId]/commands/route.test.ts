@@ -185,6 +185,10 @@ describe("game command route", () => {
     expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a5" } }, p5Cookie)).status).toBe(200);
 
     expect((await postCommand("demo-lobby", { type: "reveal_question", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "reveal_next_answer", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "reveal_next_answer", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "reveal_next_answer", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "reveal_next_answer", payload: {} }, hostCookie)).status).toBe(200);
     expect((await postCommand("demo-lobby", { type: "start_discussion", payload: {} }, hostCookie)).status).toBe(200);
     expect((await postCommand("demo-lobby", { type: "end_discussion", payload: {} }, hostCookie)).status).toBe(200);
 
@@ -322,6 +326,10 @@ describe("game command route", () => {
     expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a4" } }, p4Cookie)).status).toBe(200);
     expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a5" } }, p5Cookie)).status).toBe(200);
     expect((await postCommand("demo-lobby", { type: "reveal_question", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "reveal_next_answer", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "reveal_next_answer", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "reveal_next_answer", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "reveal_next_answer", payload: {} }, hostCookie)).status).toBe(200);
     expect((await postCommand("demo-lobby", { type: "start_discussion", payload: {} }, hostCookie)).status).toBe(200);
     expect((await postCommand("demo-lobby", { type: "end_discussion", payload: {} }, hostCookie)).status).toBe(200);
 

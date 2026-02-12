@@ -191,7 +191,28 @@ describe("game read route viewer prompts", () => {
       }),
       context("reveal-lobby"),
     );
-
+    await runCommand(
+      new Request("http://localhost/api/games/reveal-lobby/commands", {
+        method: "POST",
+        headers: cookieHeader(hostCookie),
+        body: JSON.stringify({
+          type: "reveal_next_answer",
+          payload: {},
+        }),
+      }),
+      context("reveal-lobby"),
+    );
+    await runCommand(
+      new Request("http://localhost/api/games/reveal-lobby/commands", {
+        method: "POST",
+        headers: cookieHeader(hostCookie),
+        body: JSON.stringify({
+          type: "reveal_next_answer",
+          payload: {},
+        }),
+      }),
+      context("reveal-lobby"),
+    );
     for (const [cookie, answer] of [
       [hostCookie, "a1"],
       [p2Cookie, "a2"],
@@ -222,6 +243,20 @@ describe("game read route viewer prompts", () => {
       }),
       context("reveal-lobby"),
     );
+    for (const _ of ["a", "b", "c", "d"] as const) {
+      const revealed = await runCommand(
+        new Request("http://localhost/api/games/reveal-lobby/commands", {
+          method: "POST",
+          headers: cookieHeader(hostCookie),
+          body: JSON.stringify({
+            type: "reveal_next_answer",
+            payload: {},
+          }),
+        }),
+        context("reveal-lobby"),
+      );
+      expect(revealed.status).toBe(200);
+    }
 
     const p3View = await getLobby(
       new Request("http://localhost/api/games/reveal-lobby", {

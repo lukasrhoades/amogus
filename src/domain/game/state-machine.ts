@@ -184,6 +184,7 @@ export function startRound(state: GameState, input: StartRoundInput): Result<Gam
     satOutPlayerId,
     roles: input.roleAssignment,
     answers: {},
+    revealedAnswerCount: 0,
     votes: {},
     eliminatedPlayerId: null,
   };
@@ -243,6 +244,7 @@ export function revealQuestion(state: GameState): Result<GameState> {
   const nextRound: RoundState = {
     ...state.currentRound,
     phase: "reveal",
+    revealedAnswerCount: 0,
   };
 
   return ok({
@@ -252,9 +254,32 @@ export function revealQuestion(state: GameState): Result<GameState> {
   });
 }
 
+export function revealNextAnswer(state: GameState): Result<GameState> {
+  if (state.currentRound === null || state.currentRound.phase !== "reveal") {
+    return err("invalid_phase", "revealNextAnswer requires reveal phase");
+  }
+
+  if (state.currentRound.revealedAnswerCount >= state.currentRound.activePlayerIds.length) {
+    return err("invalid_phase", "All answers are already revealed");
+  }
+
+  const nextRound: RoundState = {
+    ...state.currentRound,
+    revealedAnswerCount: state.currentRound.revealedAnswerCount + 1,
+  };
+
+  return ok({
+    ...state,
+    currentRound: nextRound,
+  });
+}
+
 export function startDiscussion(state: GameState): Result<GameState> {
   if (state.currentRound === null || state.currentRound.phase !== "reveal") {
     return err("invalid_phase", "startDiscussion requires reveal phase");
+  }
+  if (state.currentRound.revealedAnswerCount < state.currentRound.activePlayerIds.length) {
+    return err("invalid_phase", "startDiscussion requires all answers to be revealed");
   }
 
   const nextRound: RoundState = {
