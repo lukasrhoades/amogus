@@ -138,6 +138,82 @@ describe("game read route viewer prompts", () => {
     expect(p3Json.viewerRound?.prompt).toBe("Crew Prompt");
   });
 
+  it("assigns different prompts when both prompts target both roles", async () => {
+    const hostCookie = await authCookieFor(hostUsername);
+    const p2Cookie = await authCookieFor(p2Username);
+    const p3Cookie = await authCookieFor(p3Username);
+
+    await setupLobby("both-prompt-lobby");
+
+    const createdPair = await createQuestionPair(
+      new Request("http://localhost/api/question-pairs", {
+        method: "POST",
+        headers: cookieHeader(hostCookie),
+        body: JSON.stringify({
+          promptA: { text: "Prompt Alpha", target: "both" },
+          promptB: { text: "Prompt Beta", target: "both" },
+        }),
+      }),
+    );
+    const pairJson = (await createdPair.json()) as {
+      pair: {
+        id: string;
+        ownerId: string;
+        promptA: { text: string; target: "crew" | "impostor" | "both" };
+        promptB: { text: string; target: "crew" | "impostor" | "both" };
+      };
+    };
+    expect(createdPair.status).toBe(201);
+
+    const started = await runCommand(
+      new Request("http://localhost/api/games/both-prompt-lobby/commands", {
+        method: "POST",
+        headers: cookieHeader(hostCookie),
+        body: JSON.stringify({
+          type: "start_round",
+          payload: {
+            selection: {
+              questionPair: pairJson.pair,
+              impostorCount: 1,
+            },
+            roundPolicy: {
+              eligibilityEnabled: false,
+              allowVoteChanges: true,
+            },
+            roleAssignment: {
+              p1: "crew",
+              p2: "impostor",
+              p3: "crew",
+              p4: "crew",
+            },
+          },
+        }),
+      }),
+      context("both-prompt-lobby"),
+    );
+    expect(started.status).toBe(200);
+
+    const impostorView = await getLobby(
+      new Request("http://localhost/api/games/both-prompt-lobby", {
+        method: "GET",
+        headers: cookieHeader(p2Cookie),
+      }),
+      context("both-prompt-lobby"),
+    );
+    const impostorJson = (await impostorView.json()) as { viewerRound: { prompt: string | null } | null };
+    expect(impostorJson.viewerRound?.prompt).toBe("Prompt Beta");
+
+    const crewView = await getLobby(
+      new Request("http://localhost/api/games/both-prompt-lobby", {
+        method: "GET",
+        headers: cookieHeader(p3Cookie),
+      }),
+      context("both-prompt-lobby"),
+    );
+    const crewJson = (await crewView.json()) as { viewerRound: { prompt: string | null } | null };
+    expect(crewJson.viewerRound?.prompt).toBe("Prompt Alpha");
+  });
+
   it("reveals true question and answers after reveal phase starts", async () => {
     const hostCookie = await authCookieFor(hostUsername);
     const p2Cookie = await authCookieFor(p2Username);

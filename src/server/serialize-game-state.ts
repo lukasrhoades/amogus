@@ -71,19 +71,6 @@ function isPromptAllowedForRole(
   return prompt.target === "both" || prompt.target === role;
 }
 
-function promptForRole(
-  pair: QuestionPair,
-  role: Role,
-): string | null {
-  if (isPromptAllowedForRole(pair.promptA, role)) {
-    return pair.promptA.text;
-  }
-  if (isPromptAllowedForRole(pair.promptB, role)) {
-    return pair.promptB.text;
-  }
-  return null;
-}
-
 function isCrewPermissible(prompt: QuestionPair["promptA"]): boolean {
   return prompt.target === "crew" || prompt.target === "both";
 }
@@ -100,6 +87,17 @@ function revealedQuestions(pair: QuestionPair): { trueQuestion: string; alternat
     trueQuestion: truePrompt.text,
     alternativeQuestion: alternativePrompt?.text ?? null,
   };
+}
+
+function promptForRole(
+  pair: QuestionPair,
+  role: Role,
+): string | null {
+  const revealed = revealedQuestions(pair);
+  if (role === "crew") {
+    return revealed.trueQuestion;
+  }
+  return revealed.alternativeQuestion ?? revealed.trueQuestion;
 }
 
 export function serializeGameState(state: GameState, viewerPlayerId?: string): SerializedGameState {
