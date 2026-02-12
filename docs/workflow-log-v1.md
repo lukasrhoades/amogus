@@ -139,5 +139,6 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Need websocket transport and auth integration.
 - In-memory game store resets on server restart; persistence adapter still pending.
 - Runtime now supports repo driver switch (`GAME_SESSION_REPO=memory|prisma`); Prisma adapter implemented.
+- Production policy locked: `NODE_ENV=production` requires `GAME_SESSION_REPO=prisma` (fail fast otherwise).
 - Host-transfer/disconnect timeout policies are still unimplemented at domain/application level.
 - Host pause-extension behavior is implemented for host-disconnect pause flow.

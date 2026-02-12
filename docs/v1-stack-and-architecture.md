@@ -30,6 +30,11 @@ Build a playable web app for the impostor-questions game first, then iteratively
 3. Keep dependencies minimal.
 4. Avoid paid managed features until needed.
 
+## Production Policy
+1. Production runtime must use persistent DB mode (`GAME_SESSION_REPO=prisma`).
+2. Memory/auto fallback modes are for local development and testing only.
+3. Production startup should fail fast if DB-backed mode is not configured.
+
 ## Architecture (Upgradeable By Design)
 
 ### Layer 1: Domain (Pure)
@@ -126,4 +131,3 @@ Use WebSocket (Socket.IO) for:
 3. Add basic web UI to drive commands.
 4. Replace in-memory repos with Prisma adapters.
 5. Add auth persistence and hardening.
-

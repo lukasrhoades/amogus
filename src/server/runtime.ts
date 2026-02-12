@@ -7,6 +7,8 @@ import { getPrismaClient } from "./prisma-client";
 
 const runtimeSingleton = Symbol.for("sdg.runtime");
 
+type RepoDriverMode = "memory" | "prisma" | "auto";
+
 type Runtime = {
   gameService: GameSessionService;
 };
@@ -22,8 +24,20 @@ function createRuntime(): Runtime {
   };
 }
 
+function getRepoDriverMode(): RepoDriverMode {
+  const configured = process.env.GAME_SESSION_REPO;
+  if (configured === "memory" || configured === "prisma" || configured === "auto") {
+    return configured;
+  }
+  return "auto";
+}
+
 function createGameSessionRepo(): GameSessionRepo {
-  const driver = process.env.GAME_SESSION_REPO ?? "auto";
+  const driver = getRepoDriverMode();
+  if (process.env.NODE_ENV === "production" && driver !== "prisma") {
+    throw new Error("Production mode requires GAME_SESSION_REPO=prisma");
+  }
+
   if (driver === "prisma") {
     return new PrismaGameSessionRepo(getPrismaClient());
   }
@@ -101,4 +115,8 @@ export function getRuntime(): Runtime {
 export function resetRuntimeForTests(): void {
   const globalRef = globalThis as GlobalWithRuntime;
   delete globalRef[runtimeSingleton];
+}
+
+export function getConfiguredRepoDriverMode(): RepoDriverMode {
+  return getRepoDriverMode();
 }
