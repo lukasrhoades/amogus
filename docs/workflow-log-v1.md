@@ -96,7 +96,9 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - malformed command payload returns `invalid_command` (`400`)
 - missing lobby maps to `game_not_found` (`404`)
 - successful `start_round` command transitions lobby to prompting phase
-- Latest result: `18` tests passing.
+- full round lifecycle via command API reaches `setup` with expected scoring
+- tie on `close_voting` without tiebreak loser returns `missing_tiebreak` (`400`)
+- Latest result: `20` tests passing.
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -117,3 +119,4 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Need websocket transport and auth integration.
 - In-memory game store resets on server restart; persistence adapter still pending.
 - Need broader API integration coverage for remaining command flows (`submit_answer`, voting, finalize, cancel).
+- Remaining API coverage gap is mostly cancel/disconnect host-admin scenarios.
