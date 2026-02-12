@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { POST as seedDemoLobby } from "../../../dev/seed/route";
 import { POST as runCommand } from "./route";
 import { GET as getLobby } from "../route";
+import { POST as createLobby } from "../../../lobbies/route";
+import { POST as joinLobby } from "../../../lobbies/[lobbyId]/join/route";
 import { resetRuntimeForTests } from "../../../../../server/runtime";
 import { encodeSessionCookieValue } from "../../../../../server/session/session";
 
@@ -16,22 +17,48 @@ const p3Session = { playerId: "p3", displayName: "Riley" };
 const p4Session = { playerId: "p4", displayName: "Jordan" };
 const p5Session = { playerId: "p5", displayName: "Casey" };
 
+function cookieHeader(session?: { playerId: string; displayName: string }): Record<string, string> {
+  if (session === undefined) {
+    return { "Content-Type": "application/json" };
+  }
+
+  return {
+    "Content-Type": "application/json",
+    Cookie: `sdg_session=${encodeSessionCookieValue(session)}`,
+  };
+}
+
 async function postCommand(
   lobbyId: string,
   body: unknown,
   session?: { playerId: string; displayName: string },
 ) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (session !== undefined) {
-    headers.Cookie = `sdg_session=${encodeSessionCookieValue(session)}`;
-  }
-
   const request = new Request(`http://localhost/api/games/${lobbyId}/commands`, {
     method: "POST",
-    headers,
+    headers: cookieHeader(session),
     body: JSON.stringify(body),
   });
   return runCommand(request, context(lobbyId));
+}
+
+async function setupLobby(lobbyId: string): Promise<void> {
+  const createRequest = new Request("http://localhost/api/lobbies", {
+    method: "POST",
+    headers: cookieHeader(hostSession),
+    body: JSON.stringify({ lobbyId }),
+  });
+  const created = await createLobby(createRequest);
+  expect(created.status).toBe(201);
+
+  for (const session of [p2Session, p3Session, p4Session, p5Session]) {
+    const joinRequest = new Request(`http://localhost/api/lobbies/${lobbyId}/join`, {
+      method: "POST",
+      headers: cookieHeader(session),
+      body: JSON.stringify({}),
+    });
+    const joined = await joinLobby(joinRequest, { params: Promise.resolve({ lobbyId }) });
+    expect(joined.status).toBe(200);
+  }
 }
 
 describe("game command route", () => {
@@ -41,7 +68,7 @@ describe("game command route", () => {
   });
 
   it("rejects commands without session", async () => {
-    await seedDemoLobby();
+    await setupLobby("demo-lobby");
 
     const response = await postCommand("demo-lobby", {
       type: "start_round",
@@ -69,7 +96,7 @@ describe("game command route", () => {
   });
 
   it("requires host privileges for host-only commands", async () => {
-    await seedDemoLobby();
+    await setupLobby("demo-lobby");
 
     const response = await postCommand(
       "demo-lobby",
@@ -99,7 +126,7 @@ describe("game command route", () => {
   });
 
   it("runs host start_round and player submit/cast commands using session identity", async () => {
-    await seedDemoLobby();
+    await setupLobby("demo-lobby");
 
     const start = await postCommand(
       "demo-lobby",
@@ -150,7 +177,7 @@ describe("game command route", () => {
   });
 
   it("supports self leave_lobby and host remove_player", async () => {
-    await seedDemoLobby();
+    await setupLobby("demo-lobby");
 
     const leaveResponse = await postCommand("demo-lobby", { type: "leave_lobby", payload: {} }, p5Session);
     const leaveJson = (await leaveResponse.json()) as { state: { players: Array<{ id: string }> } };
@@ -168,7 +195,7 @@ describe("game command route", () => {
   });
 
   it("handles host disconnect transfer voting using session-bound voters", async () => {
-    await seedDemoLobby();
+    await setupLobby("demo-lobby");
 
     expect(
       (

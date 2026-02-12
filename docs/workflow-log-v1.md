@@ -137,6 +137,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - `src/app/api/session/route.test.ts`
 - Added realtime bus tests:
 - `src/server/realtime/lobby-event-bus.test.ts`
+- Command route tests now bootstrap lobbies through create/join APIs (no demo-seed dependency).
 - Latest result: `33` tests passing.
 
 ## 10. Red-Team Log
@@ -160,3 +161,4 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Real lobby create/join APIs now exist; demo-only seed path is no longer the sole entrypoint.
 - Host pause-extension behavior is implemented for host-disconnect pause flow.
 - Session identity is now required for create/join/command actions (host checks enforced for host-only commands).
+- UI round-start defaults now derive role assignment from active lobby state instead of hardcoded player IDs.

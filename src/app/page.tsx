@@ -194,6 +194,33 @@ export default function HomePage() {
   }
 
   async function startDemoRound() {
+    if (snapshot === null) {
+      setMessage("Load a lobby before starting a round.");
+      return;
+    }
+
+    const host = snapshot.players.find((player) => player.isHost) ?? snapshot.players[0];
+    if (host === undefined) {
+      setMessage("No players in lobby.");
+      return;
+    }
+
+    const shouldSitOutOwner = snapshot.players.length >= 5;
+    const activePlayerIds = snapshot.players
+      .map((player) => player.id)
+      .filter((id) => !(shouldSitOutOwner && id === host.id));
+
+    if (activePlayerIds.length < 4) {
+      setMessage("Need at least 4 active players to start a round.");
+      return;
+    }
+
+    const impostorId = activePlayerIds[0];
+    const roleAssignment: Record<string, "impostor" | "crew"> = {};
+    activePlayerIds.forEach((id) => {
+      roleAssignment[id] = id === impostorId ? "impostor" : "crew";
+    });
+
     const questionId = `q-${Date.now()}`;
     await runCommand({
       type: "start_round",
@@ -201,22 +228,17 @@ export default function HomePage() {
         selection: {
           questionPair: {
             id: questionId,
-            ownerId: "p1",
+            ownerId: host.id,
             canonicalQuestion: "What is your ideal weekend activity?",
             impostorQuestion: "What is your favorite holiday destination?",
           },
           impostorCount: 1,
         },
         roundPolicy: {
-          eligibilityEnabled: true,
+          eligibilityEnabled: shouldSitOutOwner,
           allowVoteChanges: true,
         },
-        roleAssignment: {
-          p2: "impostor",
-          p3: "crew",
-          p4: "crew",
-          p5: "crew",
-        },
+        roleAssignment,
       },
     });
   }
