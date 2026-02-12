@@ -325,4 +325,37 @@ describe("GameSessionService", () => {
     if (!timedOut.ok) return;
     expect(timedOut.value.phase).toBe("voting");
   });
+
+  it("restarts a completed game for play again flow", async () => {
+    const service = new GameSessionService(new InMemoryGameSessionRepo());
+    const initial = createInitialGameState({
+      lobbyId: "l7",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+    await service.create({
+      ...initial,
+      phase: "game_over",
+      status: "ended",
+      completedRounds: 10,
+      scoreboard: {
+        p1: { totalPoints: 4, impostorSurvivalWins: 1 },
+        p2: { totalPoints: 1, impostorSurvivalWins: 0 },
+        p3: { totalPoints: 1, impostorSurvivalWins: 0 },
+        p4: { totalPoints: 0, impostorSurvivalWins: 0 },
+      },
+      winnerSummary: {
+        winnerPlayerIds: ["p1"],
+        reason: "highest_score",
+      },
+    });
+
+    const restarted = await service.restartGame("l7");
+    expect(restarted.ok).toBe(true);
+    if (!restarted.ok) return;
+    expect(restarted.value.phase).toBe("setup");
+    expect(restarted.value.completedRounds).toBe(0);
+    expect(restarted.value.winnerSummary).toBeNull();
+    expect(restarted.value.scoreboard.p1?.totalPoints).toBe(0);
+  });
 });

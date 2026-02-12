@@ -63,6 +63,10 @@ type LobbySnapshot = {
     isHost: boolean;
   }>;
   scoreboard: Record<string, { totalPoints: number; impostorSurvivalWins: number }>;
+  winnerSummary: null | {
+    winnerPlayerIds: string[];
+    reason: "highest_score" | "impostor_survival_tiebreak" | "random_tiebreak";
+  };
   hasCurrentRound: boolean;
   currentRound: null | {
     roundNumber: number;
@@ -124,6 +128,7 @@ type CommandPayload =
   | { type: "cast_vote"; payload: { targetId: string } }
   | { type: "close_voting"; payload: { allowMissingVotes: boolean; tieBreakLoserId?: string } }
   | { type: "finalize_round"; payload: Record<string, never> }
+  | { type: "restart_game"; payload: Record<string, never> }
   | {
       type: "update_settings";
       payload: {
@@ -482,6 +487,7 @@ export default function HomePage() {
   const canHostEndDiscussion = isHost && round?.phase === "discussion";
   const canHostCloseVoting = isHost && round?.phase === "voting";
   const canHostFinalizeRound = isHost && snapshot?.phase === "round_result";
+  const canHostRestartGame = isHost && snapshot?.phase === "game_over";
   const removablePlayers = (snapshot?.players ?? []).filter((player) => player.id !== session?.userId);
   const hasValidVoteTarget = voteTargets.some((target) => target.id === voteTargetId);
   const connectedPlayers = (snapshot?.players ?? []).filter((player) => player.connected);
@@ -940,6 +946,18 @@ export default function HomePage() {
             </p>
           ))}
         </div>
+        {snapshot?.phase === "game_over" && snapshot.winnerSummary !== null ? (
+          <div>
+            <p>Game over.</p>
+            <p>
+              Winner(s):{" "}
+              {snapshot.winnerSummary.winnerPlayerIds
+                .map((playerId) => snapshot.players.find((player) => player.id === playerId)?.displayName ?? playerId)
+                .join(", ")}
+            </p>
+            <p>Win reason: {snapshot.winnerSummary.reason}</p>
+          </div>
+        ) : null}
         {isHost && canHostStartRound ? (
           <p>
             Start readiness: {connectedPlayers.length}/4+ connected players required
@@ -985,6 +1003,11 @@ export default function HomePage() {
           {canHostStartRound ? (
             <button type="button" onClick={startAutoRound} disabled={!canHostAttemptStartRound}>
               Start Round (Host)
+            </button>
+          ) : null}{" "}
+          {canHostRestartGame ? (
+            <button type="button" onClick={() => runCommand({ type: "restart_game", payload: {} })}>
+              Play Again (Host)
             </button>
           ) : null}{" "}
           {canSubmitAnswer ? (

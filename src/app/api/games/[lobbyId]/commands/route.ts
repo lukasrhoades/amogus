@@ -117,6 +117,10 @@ const commandSchema = z.discriminatedUnion("type", [
     payload: z.object({}),
   }),
   z.object({
+    type: z.literal("restart_game"),
+    payload: z.object({}),
+  }),
+  z.object({
     type: z.literal("update_settings"),
     payload: gameSettingsUpdateSchema,
   }),
@@ -208,6 +212,7 @@ function isHostOnlyCommand(commandType: Command["type"]): boolean {
     commandType === "end_discussion" ||
     commandType === "close_voting" ||
     commandType === "finalize_round" ||
+    commandType === "restart_game" ||
     commandType === "update_settings" ||
     commandType === "cancel_round" ||
     commandType === "remove_player"
@@ -271,6 +276,8 @@ async function runCommand(lobbyId: string, command: Command, sessionPlayerId: st
     }
     case "finalize_round":
       return service.finalizeRound(lobbyId);
+    case "restart_game":
+      return service.restartGame(lobbyId);
     case "update_settings":
       return service.updateSettings(lobbyId, command.payload);
     case "cancel_round":

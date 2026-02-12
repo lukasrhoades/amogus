@@ -118,6 +118,7 @@ export type GameState = {
   settings: GameSettings;
   usedQuestionPairIds: Set<QuestionPairId>;
   scoreboard: Scoreboard;
+  winnerSummary: WinnerSummary | null;
   completedRounds: number;
   currentRound: RoundState | null;
   hostDisconnection: HostDisconnectionState | null;

@@ -113,6 +113,7 @@ export function createInitialGameState(input: {
     settings: input.settings,
     usedQuestionPairIds: new Set<string>(),
     scoreboard: createInitialScoreboard(input.players),
+    winnerSummary: null,
     completedRounds: 0,
     currentRound: null,
     hostDisconnection: null,
@@ -667,8 +668,37 @@ export function finalizeRound(state: GameState): Result<GameState> {
     status: isGameOver ? "ended" : "in_progress",
     phase: isGameOver ? "game_over" : "setup",
     scoreboard: nextScoreboard,
+    winnerSummary: null,
     completedRounds: nextCompletedRounds,
     currentRound: null,
+  });
+}
+
+function resetScoreboard(players: Record<PlayerId, Player>): Scoreboard {
+  return Object.keys(players).reduce<Scoreboard>((acc, playerId) => {
+    acc[playerId] = {
+      totalPoints: 0,
+      impostorSurvivalWins: 0,
+    };
+    return acc;
+  }, {});
+}
+
+export function restartGame(state: GameState): Result<GameState> {
+  if (state.phase !== "game_over") {
+    return err("invalid_phase", "restartGame requires game_over phase");
+  }
+
+  return ok({
+    ...state,
+    status: "waiting",
+    phase: "setup",
+    scoreboard: resetScoreboard(state.players),
+    winnerSummary: null,
+    completedRounds: 0,
+    usedQuestionPairIds: new Set<string>(),
+    currentRound: null,
+    hostDisconnection: null,
   });
 }
 

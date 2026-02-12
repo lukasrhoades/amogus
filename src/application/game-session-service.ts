@@ -6,6 +6,7 @@ import {
   LobbyId,
   PlayerId,
   QuestionPair,
+  WinnerSummary,
   RoundCancellationReason,
   RoundRoleAssignment,
   RoundSelection,
@@ -20,6 +21,8 @@ import {
   closeVotingAndResolve,
   endDiscussion,
   finalizeRound,
+  computeWinnerSummary,
+  restartGame,
   removePlayer,
   setPlayerConnection,
   revealNextAnswer,
@@ -220,6 +223,33 @@ export class GameSessionService {
     return Math.floor(this.randomFloat() * size);
   }
 
+  private resolveWinnerSummary(state: GameState): WinnerSummary {
+    const direct = computeWinnerSummary(state);
+    if (direct.ok) {
+      return direct.value;
+    }
+    const entries = Object.entries(state.scoreboard);
+    const topScore = Math.max(...entries.map(([, value]) => value.totalPoints));
+    const topByScore = entries.filter(([, value]) => value.totalPoints === topScore);
+    const topWins = Math.max(...topByScore.map(([, value]) => value.impostorSurvivalWins));
+    const tied = topByScore.filter(([, value]) => value.impostorSurvivalWins === topWins).map(([id]) => id);
+    const randomTieWinnerId = tied[this.randomIndex(tied.length)];
+    if (randomTieWinnerId === undefined) {
+      return {
+        winnerPlayerIds: [],
+        reason: "highest_score",
+      };
+    }
+    const resolved = computeWinnerSummary(state, randomTieWinnerId);
+    if (resolved.ok) {
+      return resolved.value;
+    }
+    return {
+      winnerPlayerIds: [randomTieWinnerId],
+      reason: "random_tiebreak",
+    };
+  }
+
   private sampleImpostorCount(state: GameState): ImpostorCount {
     const roll = this.randomFloat();
     const zeroThreshold = state.settings.impostorWeights.zero;
@@ -235,7 +265,7 @@ export class GameSessionService {
   }
 
   private resolveRoundPolicy(state: GameState, override?: RoundPolicyOverride): RoundPolicy {
-    const playerCount = Object.keys(state.players).length;
+    const playerCount = Object.values(state.players).filter((player) => player.connected).length;
     return {
       eligibilityEnabled: override?.eligibilityEnabled ?? playerCount >= 5,
       allowVoteChanges: override?.allowVoteChanges ?? true,
@@ -433,6 +463,29 @@ export class GameSessionService {
     }
 
     const next = finalizeRound(stateResult.value);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+
+    const withWinnerSummary =
+      next.value.phase === "game_over"
+        ? {
+            ...next.value,
+            winnerSummary: this.resolveWinnerSummary(next.value),
+          }
+        : next.value;
+
+    await this.saveAndNotify(withWinnerSummary);
+    return ok(withWinnerSummary);
+  }
+
+  async restartGame(lobbyId: LobbyId): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+
+    const next = restartGame(stateResult.value);
     if (!next.ok) {
       return fromDomain(next);
     }

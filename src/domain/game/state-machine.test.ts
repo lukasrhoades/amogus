@@ -12,6 +12,7 @@ import {
   finalizeRound,
   revealNextAnswer,
   revealQuestion,
+  restartGame,
   startDiscussion,
   startRound,
   applyDiscussionTimeout,
@@ -811,5 +812,39 @@ describe("discussion timer", () => {
     state = expectOk(extendDiscussion(state, { addSeconds: 60 }));
 
     expect(state.currentRound?.discussionDeadlineMs).toBe(95000);
+  });
+});
+
+describe("game restart", () => {
+  it("restarts from game_over into setup with cleared scores", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+    const gameOverState = {
+      ...base,
+      phase: "game_over" as const,
+      status: "ended" as const,
+      completedRounds: 10,
+      scoreboard: {
+        p1: { totalPoints: 5, impostorSurvivalWins: 1 },
+        p2: { totalPoints: 2, impostorSurvivalWins: 0 },
+        p3: { totalPoints: 1, impostorSurvivalWins: 0 },
+        p4: { totalPoints: 0, impostorSurvivalWins: 0 },
+      },
+      winnerSummary: {
+        winnerPlayerIds: ["p1"],
+        reason: "highest_score" as const,
+      },
+    };
+
+    const restarted = restartGame(gameOverState);
+    expect(restarted.ok).toBe(true);
+    if (!restarted.ok) return;
+    expect(restarted.value.phase).toBe("setup");
+    expect(restarted.value.completedRounds).toBe(0);
+    expect(restarted.value.winnerSummary).toBeNull();
+    expect(restarted.value.scoreboard.p1?.totalPoints).toBe(0);
   });
 });

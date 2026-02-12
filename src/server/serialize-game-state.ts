@@ -32,6 +32,7 @@ export type SerializedGameState = {
     isHost: boolean;
   }>;
   scoreboard: GameState["scoreboard"];
+  winnerSummary: GameState["winnerSummary"];
   hasCurrentRound: boolean;
   currentRound: null | {
     roundNumber: number;
@@ -157,6 +158,7 @@ export function serializeGameState(state: GameState, viewerPlayerId?: string): S
       isHost: player.isHost,
     })),
     scoreboard: state.scoreboard,
+    winnerSummary: state.winnerSummary,
     hasCurrentRound: state.currentRound !== null,
     currentRound:
       state.currentRound === null

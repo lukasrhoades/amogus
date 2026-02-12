@@ -391,4 +391,21 @@ describe("game command route", () => {
     expect(updatedJson.state.settings.questionReuseEnabled).toBe(true);
     expect(updatedJson.state.settings.impostorWeights.one).toBe(0.8);
   });
+
+  it("accepts restart_game command and returns invalid_phase outside game_over", async () => {
+    await setupLobby("demo-lobby");
+    const hostCookie = await authCookieFor(hostUser);
+
+    const restarted = await postCommand(
+      "demo-lobby",
+      {
+        type: "restart_game",
+        payload: {},
+      },
+      hostCookie,
+    );
+    const restartedJson = (await restarted.json()) as { error: string };
+    expect(restarted.status).toBe(409);
+    expect(restartedJson.error).toBe("invalid_phase");
+  });
 });
