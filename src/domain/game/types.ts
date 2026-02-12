@@ -96,6 +96,7 @@ export type GameStatus = "waiting" | "in_progress" | "paused" | "ended";
 export type HostDisconnectionState = {
   disconnectedAtMs: number;
   deadlineMs: number;
+  extendedPauseEnabled: boolean;
   statusBeforePause: Exclude<GameStatus, "paused">;
   transferVotes: Partial<Record<PlayerId, PlayerId>>;
 };
@@ -129,7 +130,8 @@ export type TransitionErrorCode =
   | "invalid_round"
   | "game_over"
   | "host_not_disconnected"
-  | "invalid_host_transfer_vote";
+  | "invalid_host_transfer_vote"
+  | "pause_extension_unavailable";
 
 export type TransitionError = {
   code: TransitionErrorCode;

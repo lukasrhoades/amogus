@@ -13,6 +13,7 @@ import {
   revealQuestion,
   startDiscussion,
   startRound,
+  extendHostDisconnectPause,
   setPlayerConnection,
   submitAnswer,
 } from "./state-machine";
@@ -531,6 +532,24 @@ describe("host disconnect rules", () => {
 
     expect(timedOut.value.status).toBe("ended");
     expect(timedOut.value.phase).toBe("game_over");
+  });
+
+  it("extends host disconnect timeout window to paused watchdog limit", () => {
+    const state = createInitialGameState({
+      lobbyId: "l1",
+      players: players(5),
+      settings: defaultSettings(),
+    });
+
+    const disconnected = expectOk(setPlayerConnection(state, "p1", false, 1000));
+    expect(disconnected.hostDisconnection?.deadlineMs).toBe(301000);
+
+    const extended = extendHostDisconnectPause(disconnected);
+    expect(extended.ok).toBe(true);
+    if (!extended.ok) return;
+
+    expect(extended.value.hostDisconnection?.deadlineMs).toBe(3601000);
+    expect(extended.value.hostDisconnection?.extendedPauseEnabled).toBe(true);
   });
 });
 

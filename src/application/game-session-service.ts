@@ -19,6 +19,7 @@ import {
   finalizeRound,
   setPlayerConnection,
   revealQuestion,
+  extendHostDisconnectPause,
   startDiscussion,
   startRound,
   submitAnswer,
@@ -271,6 +272,21 @@ export class GameSessionService {
     }
 
     const next = applyHostDisconnectTimeout(stateResult.value, nowMs);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+
+    await this.repo.save(next.value);
+    return ok(next.value);
+  }
+
+  async extendHostDisconnectPause(lobbyId: LobbyId): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+
+    const next = extendHostDisconnectPause(stateResult.value);
     if (!next.ok) {
       return fromDomain(next);
     }

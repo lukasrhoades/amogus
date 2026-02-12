@@ -55,7 +55,8 @@ function createError(
     | "invalid_round"
     | "game_over"
     | "host_not_disconnected"
-    | "invalid_host_transfer_vote",
+    | "invalid_host_transfer_vote"
+    | "pause_extension_unavailable",
   message: string,
 ) {
   return { code, message };
@@ -643,6 +644,7 @@ export function setPlayerConnection(
       hostDisconnection: {
         disconnectedAtMs: nowMs,
         deadlineMs: nowMs + HOST_RECONNECT_TIMEOUT_MS,
+        extendedPauseEnabled: false,
         statusBeforePause: ensureNonPausedStatus(state.status),
         transferVotes: {},
       },
@@ -751,5 +753,28 @@ export function applyHostDisconnectTimeout(
     status: "ended",
     phase: "game_over",
     currentRound: null,
+  });
+}
+
+export function extendHostDisconnectPause(state: GameState): Result<GameState> {
+  const hostDisconnection = state.hostDisconnection;
+  if (hostDisconnection === null) {
+    return err("host_not_disconnected", "No disconnected host pause to extend");
+  }
+
+  if (hostDisconnection.extendedPauseEnabled) {
+    return err("pause_extension_unavailable", "Host disconnect pause has already been extended");
+  }
+
+  const extendedDeadlineMs =
+    hostDisconnection.disconnectedAtMs + state.settings.discussion.pausedWatchdogSeconds * 1000;
+
+  return ok({
+    ...state,
+    hostDisconnection: {
+      ...hostDisconnection,
+      deadlineMs: extendedDeadlineMs,
+      extendedPauseEnabled: true,
+    },
   });
 }

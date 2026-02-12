@@ -345,4 +345,44 @@ describe("game command route", () => {
     expect(timeoutJson.state.status).toBe("ended");
     expect(timeoutJson.state.phase).toBe("game_over");
   });
+
+  it("respects extended host pause window before ending lobby", async () => {
+    await seedDemoLobby();
+
+    await postCommand("demo-lobby", {
+      type: "set_player_connection",
+      payload: { playerId: "p1", connected: false, nowMs: 1000 },
+    });
+    await postCommand("demo-lobby", {
+      type: "set_player_connection",
+      payload: { playerId: "p4", connected: false, nowMs: 1200 },
+    });
+    await postCommand("demo-lobby", {
+      type: "set_player_connection",
+      payload: { playerId: "p5", connected: false, nowMs: 1200 },
+    });
+
+    const extendResponse = await postCommand("demo-lobby", {
+      type: "extend_host_disconnect_pause",
+      payload: {},
+    });
+    expect(extendResponse.status).toBe(200);
+
+    const earlyTimeoutResponse = await postCommand("demo-lobby", {
+      type: "apply_host_disconnect_timeout",
+      payload: { nowMs: 301000 },
+    });
+    const earlyTimeoutJson = (await earlyTimeoutResponse.json()) as { state: { status: string; phase: string } };
+    expect(earlyTimeoutResponse.status).toBe(200);
+    expect(earlyTimeoutJson.state.status).toBe("paused");
+
+    const finalTimeoutResponse = await postCommand("demo-lobby", {
+      type: "apply_host_disconnect_timeout",
+      payload: { nowMs: 3601000 },
+    });
+    const finalTimeoutJson = (await finalTimeoutResponse.json()) as { state: { status: string; phase: string } };
+    expect(finalTimeoutResponse.status).toBe(200);
+    expect(finalTimeoutJson.state.status).toBe("ended");
+    expect(finalTimeoutJson.state.phase).toBe("game_over");
+  });
 });
