@@ -16,6 +16,9 @@ Why: includes auth-adjacent behavior, multiplayer synchronization, and scoring i
 Implemented in:
 - `src/domain/game/types.ts`
 - `src/domain/game/state-machine.ts`
+- `src/application/game-session-service.ts`
+- `src/ports/game-session-repo.ts`
+- `src/adapters/in-memory/in-memory-game-session-repo.ts`
 
 DSL-style commands (pure domain transitions):
 - `createInitialGameState`
@@ -40,6 +43,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Tooling initialized with TypeScript + Vitest.
 - Command: `npm run typecheck`
 - Result: pass.
+- Re-run after adding application/ports layer: pass.
 
 ## 7. Boundary Safety Checks
 - Deferred to boundary adapters (`zod` schemas and API/socket ingress) once web layer is scaffolded.
@@ -57,9 +61,11 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Result in sandbox: failed due restricted network (`ENOTFOUND registry.npmjs.org`).
 - User-run result on host machine: `0 vulnerabilities found`.
 - Decision: security gate satisfied for this stage with host-machine audit confirmation.
+- No additional dependencies were introduced in the application/ports stage.
 
 ## 9. Test Results
 - Added tests in `src/domain/game/state-machine.test.ts`.
+- Added service orchestration tests in `src/application/game-session-service.test.ts`.
 - Coverage focus:
 - eligibility sit-out behavior for 4 vs 5 players
 - self-vote prohibition
@@ -67,7 +73,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - scoring for 1-impostor survive and impostor-eliminated flows
 - canceled-round round-cap behavior with question reuse ON/OFF
 - Command: `npm test`
-- Result: pass (`8` tests).
+- Result: pass (`10` tests across 2 files).
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
