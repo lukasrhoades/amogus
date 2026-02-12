@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { GET, POST } from "./route";
+import { encodeSessionCookieValue } from "../../../server/session/session";
 
 describe("session route", () => {
   it("creates a session cookie and returns session payload", async () => {
@@ -25,5 +26,23 @@ describe("session route", () => {
 
     expect(response.status).toBe(200);
     expect(json.session).toBeNull();
+  });
+
+  it("prefers explicit session header over cookie", async () => {
+    const headerSession = { playerId: "p_header", displayName: "Header" };
+    const cookieSession = { playerId: "p_cookie", displayName: "Cookie" };
+
+    const response = await GET(
+      new Request("http://localhost/api/session", {
+        headers: {
+          "x-sdg-session": encodeSessionCookieValue(headerSession),
+          Cookie: `sdg_session=${encodeSessionCookieValue(cookieSession)}`,
+        },
+      }),
+    );
+    const json = (await response.json()) as { session: { playerId: string; displayName: string } | null };
+
+    expect(response.status).toBe(200);
+    expect(json.session?.playerId).toBe("p_header");
   });
 });

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+const SESSION_STORAGE_KEY = "sdg.session.override";
+
 type Session = {
   playerId: string;
   displayName: string;
@@ -94,6 +96,47 @@ export default function HomePage() {
     }>
   >([]);
 
+  function readSessionToken(): string | null {
+    if (typeof window === "undefined") {
+      return null;
+    }
+    const value = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    return value === null || value.trim() === "" ? null : value;
+  }
+
+  function writeSessionTokenFromSession(nextSession: Session): void {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const encoded = btoa(JSON.stringify(nextSession))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+    window.localStorage.setItem(SESSION_STORAGE_KEY, encoded);
+  }
+
+  function authHeaders(base?: HeadersInit): HeadersInit {
+    const headers = new Headers(base);
+    const token = readSessionToken();
+    if (token !== null) {
+      headers.set("x-sdg-session", token);
+    }
+    return headers;
+  }
+
+  function withSessionQuery(path: string): string {
+    if (typeof window === "undefined") {
+      return path;
+    }
+    const token = readSessionToken();
+    if (token === null) {
+      return path;
+    }
+    const url = new URL(path, window.location.origin);
+    url.searchParams.set("sdg_session", token);
+    return `${url.pathname}${url.search}`;
+  }
+
   useEffect(() => {
     const run = async () => {
       const response = await fetch("/api/session", { method: "GET" });
@@ -104,6 +147,7 @@ export default function HomePage() {
       if (payload.session !== null) {
         setSession(payload.session);
         setSessionDisplayName(payload.session.displayName);
+        writeSessionTokenFromSession(payload.session);
       }
     };
 
@@ -115,7 +159,7 @@ export default function HomePage() {
       return;
     }
 
-    const source = new EventSource(`/api/games/${activeLobbyId}/events`);
+    const source = new EventSource(withSessionQuery(`/api/games/${activeLobbyId}/events`));
     source.onopen = () => {
       setRealtimeConnected(true);
     };
@@ -142,7 +186,7 @@ export default function HomePage() {
   async function createSession() {
     const response = await fetch("/api/session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ displayName: sessionDisplayName }),
     });
 
@@ -152,6 +196,7 @@ export default function HomePage() {
     }
 
     const payload = (await response.json()) as { session: Session };
+    writeSessionTokenFromSession(payload.session);
     setSession(payload.session);
     setMessage(`Session ready: ${payload.session.displayName} (${payload.session.playerId})`);
     await loadQuestionPairs();
@@ -166,7 +211,7 @@ export default function HomePage() {
   async function createLobby() {
     const response = await fetch("/api/lobbies", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         lobbyId: createLobbyId,
       }),
@@ -186,7 +231,7 @@ export default function HomePage() {
   async function joinLobby() {
     const response = await fetch(`/api/lobbies/${activeLobbyId}/join`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({}),
     });
 
@@ -203,6 +248,7 @@ export default function HomePage() {
   async function deleteLobby() {
     const response = await fetch(`/api/lobbies/${activeLobbyId}`, {
       method: "DELETE",
+      headers: authHeaders(),
     });
     if (!response.ok) {
       const payload = (await response.json()) as { error: string; message?: string };
@@ -214,7 +260,7 @@ export default function HomePage() {
   }
 
   async function loadLobby(lobbyId: string = activeLobbyId) {
-    const response = await fetch(`/api/games/${lobbyId}`, { method: "GET" });
+    const response = await fetch(`/api/games/${lobbyId}`, { method: "GET", headers: authHeaders() });
     if (!response.ok) {
       const payload = (await response.json()) as { message?: string };
       setMessage(payload.message ?? "Failed to load lobby.");
@@ -230,9 +276,9 @@ export default function HomePage() {
   async function runCommand(command: CommandPayload) {
     const response = await fetch(`/api/games/${activeLobbyId}/commands`, {
       method: "POST",
-      headers: {
+      headers: authHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify(command),
     });
 
@@ -252,7 +298,7 @@ export default function HomePage() {
   }
 
   async function loadQuestionPairs() {
-    const response = await fetch("/api/question-pairs", { method: "GET" });
+    const response = await fetch("/api/question-pairs", { method: "GET", headers: authHeaders() });
     if (!response.ok) {
       setQuestionPairs([]);
       return;
@@ -270,7 +316,7 @@ export default function HomePage() {
   async function createQuestionPair() {
     const response = await fetch("/api/question-pairs", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         promptA: { text: promptAText, target: promptATarget },
         promptB: { text: promptBText, target: promptBTarget },
@@ -290,7 +336,7 @@ export default function HomePage() {
   }
 
   async function deleteQuestionPair(pairId: string) {
-    const response = await fetch(`/api/question-pairs/${pairId}`, { method: "DELETE" });
+    const response = await fetch(`/api/question-pairs/${pairId}`, { method: "DELETE", headers: authHeaders() });
     if (!response.ok) {
       setMessage("Delete pair failed.");
       return;

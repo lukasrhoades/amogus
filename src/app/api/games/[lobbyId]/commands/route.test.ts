@@ -139,6 +139,25 @@ describe("game command route", () => {
     expect(response.status).toBe(403);
   });
 
+  it("uses explicit session header over cookie for auth identity", async () => {
+    await setupLobby("demo-lobby");
+
+    const request = new Request("http://localhost/api/games/demo-lobby/commands", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `sdg_session=${encodeSessionCookieValue(p2Session)}`,
+        "x-sdg-session": encodeSessionCookieValue(hostSession),
+      },
+      body: JSON.stringify({
+        type: "start_round_auto",
+        payload: {},
+      }),
+    });
+    const response = await runCommand(request, context("demo-lobby"));
+    expect(response.status).toBe(422);
+  });
+
   it("runs host start_round and player submit/cast commands using session identity", async () => {
     await setupLobby("demo-lobby");
 

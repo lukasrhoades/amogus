@@ -1,4 +1,6 @@
 export const SESSION_COOKIE_NAME = "sdg_session";
+export const SESSION_HEADER_NAME = "x-sdg-session";
+export const SESSION_QUERY_PARAM = "sdg_session";
 
 type SessionPayload = {
   playerId: string;
@@ -54,6 +56,23 @@ function parseCookieHeader(header: string | null): Record<string, string> {
 }
 
 export function readSessionFromRequest(request: Request): SessionPayload | null {
+  const headerValue = request.headers.get(SESSION_HEADER_NAME);
+  if (headerValue !== null && headerValue.trim() !== "") {
+    const fromHeader = decodeSessionCookieValue(headerValue);
+    if (fromHeader !== null) {
+      return fromHeader;
+    }
+  }
+
+  const url = new URL(request.url);
+  const queryValue = url.searchParams.get(SESSION_QUERY_PARAM);
+  if (queryValue !== null && queryValue.trim() !== "") {
+    const fromQuery = decodeSessionCookieValue(queryValue);
+    if (fromQuery !== null) {
+      return fromQuery;
+    }
+  }
+
   const cookies = parseCookieHeader(request.headers.get("cookie"));
   const value = cookies[SESSION_COOKIE_NAME];
   if (value === undefined) {
