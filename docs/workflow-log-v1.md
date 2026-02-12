@@ -37,17 +37,37 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - No runtime/network/db effects in domain layer.
 
 ## 6. Compile/Static Results
-- Not run yet (project scaffold and toolchain not initialized in repository).
+- Tooling initialized with TypeScript + Vitest.
+- Command: `npm run typecheck`
+- Result: pass.
 
 ## 7. Boundary Safety Checks
 - Deferred to boundary adapters (`zod` schemas and API/socket ingress) once web layer is scaffolded.
 
 ## 8. Security Log
-- No dependencies introduced yet.
-- Dependency/CVE checks deferred until package initialization.
+- Dependencies introduced:
+- `typescript@5.9.3`
+- `vitest@4.0.18`
+- `@types/node@25.2.3`
+- Command: `npm ls --depth=0`
+- Result: confirms installed versions above.
+- Command: `npm audit --omit=dev`
+- Result: `found 0 vulnerabilities`.
+- Command: `npm audit`
+- Result in sandbox: failed due restricted network (`ENOTFOUND registry.npmjs.org`).
+- User-run result on host machine: `0 vulnerabilities found`.
+- Decision: security gate satisfied for this stage with host-machine audit confirmation.
 
 ## 9. Test Results
-- Not run yet; tests will be added after baseline domain compile path is established.
+- Added tests in `src/domain/game/state-machine.test.ts`.
+- Coverage focus:
+- eligibility sit-out behavior for 4 vs 5 players
+- self-vote prohibition
+- tie-resolution requiring explicit tiebreak loser
+- scoring for 1-impostor survive and impostor-eliminated flows
+- canceled-round round-cap behavior with question reuse ON/OFF
+- Command: `npm test`
+- Result: pass (`8` tests).
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -61,6 +81,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Rules were transcribed directly from session confirmations.
 
 ## 13. Final Risks And Follow-Ups
-- Missing executable project scaffold (Next.js/TS/Vitest).
+- Next.js delivery layer not scaffolded yet.
 - Boundary validation and auth not implemented yet.
-- Need explicit tests for tie-break, scoring matrix, and cancel-round round-cap behavior.
+- Need tests for remaining scoring branches (`0 impostor`, `2 impostor`) and winner-tiebreak function.
+- Need boundary-layer input validation (`zod`) and websocket/API contract tests.

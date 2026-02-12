@@ -1,0 +1,349 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  cancelCurrentRoundBeforeReveal,
+  castVote,
+  closeVotingAndResolve,
+  createInitialGameState,
+  endDiscussion,
+  finalizeRound,
+  revealQuestion,
+  startDiscussion,
+  startRound,
+  submitAnswer,
+} from "./state-machine";
+import { GameSettings, Player, PlayerId, QuestionPair, RoundRoleAssignment } from "./types";
+
+function players(count: number): Player[] {
+  return Array.from({ length: count }, (_, idx) => {
+    const id = `p${idx + 1}`;
+    return {
+      id,
+      displayName: id,
+      isHost: idx === 0,
+      connected: true,
+    };
+  });
+}
+
+function defaultSettings(overrides: Partial<GameSettings> = {}): GameSettings {
+  return {
+    plannedRounds: 10,
+    roundsCappedByQuestions: false,
+    questionReuseEnabled: false,
+    impostorWeights: { zero: 0.025, one: 0.95, two: 0.025 },
+    discussion: {
+      timerSeconds: null,
+      watchdogSeconds: 600,
+      pausedWatchdogSeconds: 3600,
+    },
+    scoring: {
+      impostorSurvivesPoints: 3,
+      crewVotesOutImpostorPoints: 1,
+      crewVotedOutPenaltyEnabled: true,
+      crewVotedOutPenaltyPoints: -1,
+    },
+    ...overrides,
+  };
+}
+
+function defaultQuestion(ownerId: PlayerId = "p1"): QuestionPair {
+  return {
+    id: "q1",
+    ownerId,
+    canonicalQuestion: "What is your favorite color?",
+    impostorQuestion: "What is your favorite animal?",
+  };
+}
+
+function assignment(entries: Array<[PlayerId, "impostor" | "crew"]>): RoundRoleAssignment {
+  return Object.fromEntries(entries);
+}
+
+function submitAllAnswers(state: ReturnType<typeof createInitialGameState>) {
+  if (state.currentRound === null) {
+    throw new Error("Round not started");
+  }
+
+  return state.currentRound.activePlayerIds.reduce((acc, id) => {
+    const result = submitAnswer(acc, id, `answer-${id}`);
+    if (!result.ok) throw new Error(result.error.message);
+    return result.value;
+  }, state);
+}
+
+function expectOk<T>(result: { ok: true; value: T } | { ok: false; error: { message: string } }): T {
+  if (!result.ok) {
+    throw new Error(result.error.message);
+  }
+  return result.value;
+}
+
+describe("startRound eligibility behavior", () => {
+  it("sits out question owner when eligibility is enabled with 5 players", () => {
+    const state = createInitialGameState({
+      lobbyId: "l1",
+      players: players(5),
+      settings: defaultSettings(),
+    });
+
+    const result = startRound(state, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+      roundPolicy: { eligibilityEnabled: true, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p2", "impostor"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+        ["p5", "crew"],
+      ]),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.currentRound?.satOutPlayerId).toBe("p1");
+    expect(result.value.currentRound?.activePlayerIds).toEqual(["p2", "p3", "p4", "p5"]);
+  });
+
+  it("does not sit out question owner with 4 players even when eligibility is enabled", () => {
+    const state = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const result = startRound(state, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+      roundPolicy: { eligibilityEnabled: true, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "crew"],
+        ["p2", "impostor"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.currentRound?.satOutPlayerId).toBeNull();
+    expect(result.value.currentRound?.activePlayerIds).toEqual(["p1", "p2", "p3", "p4"]);
+  });
+});
+
+describe("voting constraints and tie resolution", () => {
+  it("forbids self-votes", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const started = startRound(base, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "crew"],
+        ["p2", "impostor"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+    if (!started.ok) throw new Error(started.error.message);
+
+    let state = submitAllAnswers(started.value);
+    const revealed = revealQuestion(state);
+    if (!revealed.ok) throw new Error(revealed.error.message);
+    const discussion = startDiscussion(revealed.value);
+    if (!discussion.ok) throw new Error(discussion.error.message);
+    const voting = endDiscussion(discussion.value);
+    if (!voting.ok) throw new Error(voting.error.message);
+
+    const selfVote = castVote(voting.value, "p1", "p1");
+    expect(selfVote.ok).toBe(false);
+    if (selfVote.ok) return;
+    expect(selfVote.error.code).toBe("self_vote_forbidden");
+  });
+
+  it("requires tiebreak loser when votes tie", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const started = startRound(base, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "crew"],
+        ["p2", "impostor"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+    if (!started.ok) throw new Error(started.error.message);
+
+    let state = submitAllAnswers(started.value);
+    state = expectOk(revealQuestion(state));
+    state = expectOk(startDiscussion(state));
+    state = expectOk(endDiscussion(state));
+
+    state = expectOk(castVote(state, "p1", "p2"));
+    state = expectOk(castVote(state, "p2", "p1"));
+    state = expectOk(castVote(state, "p3", "p2"));
+    state = expectOk(castVote(state, "p4", "p1"));
+
+    const unresolved = closeVotingAndResolve(state, { allowMissingVotes: false });
+    expect(unresolved.ok).toBe(false);
+    if (unresolved.ok) return;
+    expect(unresolved.error.code).toBe("missing_tiebreak");
+
+    const resolved = closeVotingAndResolve(state, {
+      allowMissingVotes: false,
+      tieBreakLoserId: "p1",
+    });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.value.currentRound?.eliminatedPlayerId).toBe("p1");
+  });
+});
+
+describe("scoring", () => {
+  it("awards +3 to surviving impostor and -1 to voted-out crew", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const started = startRound(base, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "impostor"],
+        ["p2", "crew"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+    if (!started.ok) throw new Error(started.error.message);
+
+    let state = submitAllAnswers(started.value);
+    state = expectOk(revealQuestion(state));
+    state = expectOk(startDiscussion(state));
+    state = expectOk(endDiscussion(state));
+    state = expectOk(castVote(state, "p1", "p2"));
+    state = expectOk(castVote(state, "p2", "p3"));
+    state = expectOk(castVote(state, "p3", "p2"));
+    state = expectOk(castVote(state, "p4", "p2"));
+    state = expectOk(closeVotingAndResolve(state, { allowMissingVotes: false }));
+
+    const finalized = finalizeRound(state);
+    expect(finalized.ok).toBe(true);
+    if (!finalized.ok) return;
+
+    const p1 = finalized.value.scoreboard.p1;
+    const p2 = finalized.value.scoreboard.p2;
+    expect(p1).toBeDefined();
+    expect(p2).toBeDefined();
+    expect(p1?.totalPoints).toBe(3);
+    expect(p1?.impostorSurvivalWins).toBe(1);
+    expect(p2?.totalPoints).toBe(-1);
+    expect(finalized.value.phase).toBe("setup");
+  });
+
+  it("awards +1 to each crew when impostor is voted out", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const started = startRound(base, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "impostor"],
+        ["p2", "crew"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+    if (!started.ok) throw new Error(started.error.message);
+
+    let state = submitAllAnswers(started.value);
+    state = expectOk(revealQuestion(state));
+    state = expectOk(startDiscussion(state));
+    state = expectOk(endDiscussion(state));
+    state = expectOk(castVote(state, "p1", "p2"));
+    state = expectOk(castVote(state, "p2", "p1"));
+    state = expectOk(castVote(state, "p3", "p1"));
+    state = expectOk(castVote(state, "p4", "p1"));
+    state = expectOk(closeVotingAndResolve(state, { allowMissingVotes: false }));
+
+    const finalized = finalizeRound(state);
+    expect(finalized.ok).toBe(true);
+    if (!finalized.ok) return;
+
+    expect(finalized.value.scoreboard.p1?.totalPoints).toBe(0);
+    expect(finalized.value.scoreboard.p2?.totalPoints).toBe(1);
+    expect(finalized.value.scoreboard.p3?.totalPoints).toBe(1);
+    expect(finalized.value.scoreboard.p4?.totalPoints).toBe(1);
+  });
+});
+
+describe("cancel-round and round cap behavior", () => {
+  it("reduces planned rounds when question-capped and reuse is off", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings({ plannedRounds: 6, roundsCappedByQuestions: true, questionReuseEnabled: false }),
+    });
+
+    const started = startRound(base, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "crew"],
+        ["p2", "impostor"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+    if (!started.ok) throw new Error(started.error.message);
+
+    const canceled = cancelCurrentRoundBeforeReveal(started.value, "admin_skip");
+    expect(canceled.ok).toBe(true);
+    if (!canceled.ok) return;
+
+    expect(canceled.value.settings.plannedRounds).toBe(5);
+    expect(canceled.value.phase).toBe("setup");
+  });
+
+  it("does not reduce planned rounds when question reuse is on", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings({ plannedRounds: 6, roundsCappedByQuestions: true, questionReuseEnabled: true }),
+    });
+
+    const started = startRound(base, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "crew"],
+        ["p2", "impostor"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+    if (!started.ok) throw new Error(started.error.message);
+
+    const canceled = cancelCurrentRoundBeforeReveal(started.value, "admin_skip");
+    expect(canceled.ok).toBe(true);
+    if (!canceled.ok) return;
+
+    expect(canceled.value.settings.plannedRounds).toBe(6);
+  });
+});

@@ -11,6 +11,7 @@ import {
   RoundSelection,
   RoundState,
   Scoreboard,
+  ScoreboardEntry,
   VoteResolution,
   WinnerSummary,
 } from "./types";
@@ -326,8 +327,12 @@ function resolveVotes(round: RoundState, tieBreakLoserId?: PlayerId): Result<Vot
   const topCandidates = Object.keys(tally).filter((playerId) => tally[playerId] === maxVotes);
 
   if (topCandidates.length === 1) {
+    const eliminatedPlayerId = topCandidates[0];
+    if (eliminatedPlayerId === undefined) {
+      return err("missing_tiebreak", "Unable to resolve elimination candidate");
+    }
     return ok({
-      eliminatedPlayerId: topCandidates[0],
+      eliminatedPlayerId,
       topCandidates,
       requiredTiebreak: false,
     });
@@ -376,7 +381,10 @@ export function closeVotingAndResolve(state: GameState, input: CloseVotingInput)
 }
 
 function applyScore(scoreboard: Scoreboard, playerId: PlayerId, delta: number): Scoreboard {
-  const previous = scoreboard[playerId];
+  const previous: ScoreboardEntry = scoreboard[playerId] ?? {
+    totalPoints: 0,
+    impostorSurvivalWins: 0,
+  };
   return {
     ...scoreboard,
     [playerId]: {
@@ -387,7 +395,10 @@ function applyScore(scoreboard: Scoreboard, playerId: PlayerId, delta: number): 
 }
 
 function withImpostorSurvivalWin(scoreboard: Scoreboard, playerId: PlayerId): Scoreboard {
-  const previous = scoreboard[playerId];
+  const previous: ScoreboardEntry = scoreboard[playerId] ?? {
+    totalPoints: 0,
+    impostorSurvivalWins: 0,
+  };
   return {
     ...scoreboard,
     [playerId]: {
@@ -419,6 +430,9 @@ function finalizeRoundScores(state: GameState, round: RoundState): Scoreboard {
 
   if (round.impostorCount === 1) {
     const impostorId = impostorIds[0];
+    if (impostorId === undefined) {
+      return nextScoreboard;
+    }
     if (eliminated === impostorId) {
       crewIds.forEach((crewId) => {
         nextScoreboard = applyScore(nextScoreboard, crewId, crewImpostorCatchPoints);
@@ -520,8 +534,10 @@ export function computeWinnerSummary(
   }
 
   const playerIds = Object.keys(state.scoreboard);
-  const highestScore = Math.max(...playerIds.map((id) => state.scoreboard[id].totalPoints));
-  const topByScore = playerIds.filter((id) => state.scoreboard[id].totalPoints === highestScore);
+  const highestScore = Math.max(
+    ...playerIds.map((id) => (state.scoreboard[id]?.totalPoints ?? Number.NEGATIVE_INFINITY)),
+  );
+  const topByScore = playerIds.filter((id) => (state.scoreboard[id]?.totalPoints ?? Number.NEGATIVE_INFINITY) === highestScore);
 
   if (topByScore.length === 1) {
     return ok({
@@ -530,8 +546,12 @@ export function computeWinnerSummary(
     });
   }
 
-  const highestImpostorWins = Math.max(...topByScore.map((id) => state.scoreboard[id].impostorSurvivalWins));
-  const topByImpostorWins = topByScore.filter((id) => state.scoreboard[id].impostorSurvivalWins === highestImpostorWins);
+  const highestImpostorWins = Math.max(
+    ...topByScore.map((id) => (state.scoreboard[id]?.impostorSurvivalWins ?? Number.NEGATIVE_INFINITY)),
+  );
+  const topByImpostorWins = topByScore.filter(
+    (id) => (state.scoreboard[id]?.impostorSurvivalWins ?? Number.NEGATIVE_INFINITY) === highestImpostorWins,
+  );
 
   if (topByImpostorWins.length === 1) {
     return ok({
