@@ -4,6 +4,7 @@ import {
   cancelCurrentRoundBeforeReveal,
   castVote,
   closeVotingAndResolve,
+  computeWinnerSummary,
   createInitialGameState,
   endDiscussion,
   finalizeRound,
@@ -290,6 +291,176 @@ describe("scoring", () => {
     expect(finalized.value.scoreboard.p2?.totalPoints).toBe(1);
     expect(finalized.value.scoreboard.p3?.totalPoints).toBe(1);
     expect(finalized.value.scoreboard.p4?.totalPoints).toBe(1);
+  });
+
+  it("applies only crew voted-out penalty in 0-impostor rounds", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const started = startRound(base, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 0 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "crew"],
+        ["p2", "crew"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+    if (!started.ok) throw new Error(started.error.message);
+
+    let state = submitAllAnswers(started.value);
+    state = expectOk(revealQuestion(state));
+    state = expectOk(startDiscussion(state));
+    state = expectOk(endDiscussion(state));
+    state = expectOk(castVote(state, "p1", "p2"));
+    state = expectOk(castVote(state, "p2", "p3"));
+    state = expectOk(castVote(state, "p3", "p2"));
+    state = expectOk(castVote(state, "p4", "p2"));
+    state = expectOk(closeVotingAndResolve(state, { allowMissingVotes: false }));
+
+    const finalized = finalizeRound(state);
+    expect(finalized.ok).toBe(true);
+    if (!finalized.ok) return;
+
+    expect(finalized.value.scoreboard.p2?.totalPoints).toBe(-1);
+    expect(finalized.value.scoreboard.p1?.totalPoints).toBe(0);
+    expect(finalized.value.scoreboard.p3?.totalPoints).toBe(0);
+    expect(finalized.value.scoreboard.p4?.totalPoints).toBe(0);
+  });
+
+  it("awards +3 to both impostors when both survive in 2-impostor round", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const started = startRound(base, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 2 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "impostor"],
+        ["p2", "impostor"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+    if (!started.ok) throw new Error(started.error.message);
+
+    let state = submitAllAnswers(started.value);
+    state = expectOk(revealQuestion(state));
+    state = expectOk(startDiscussion(state));
+    state = expectOk(endDiscussion(state));
+    state = expectOk(castVote(state, "p1", "p3"));
+    state = expectOk(castVote(state, "p2", "p3"));
+    state = expectOk(castVote(state, "p3", "p4"));
+    state = expectOk(castVote(state, "p4", "p3"));
+    state = expectOk(closeVotingAndResolve(state, { allowMissingVotes: false }));
+
+    const finalized = finalizeRound(state);
+    expect(finalized.ok).toBe(true);
+    if (!finalized.ok) return;
+
+    expect(finalized.value.scoreboard.p1?.totalPoints).toBe(3);
+    expect(finalized.value.scoreboard.p2?.totalPoints).toBe(3);
+    expect(finalized.value.scoreboard.p3?.totalPoints).toBe(-1);
+  });
+
+  it("awards +3 to surviving impostor and +1 to crew when one impostor is voted out", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const started = startRound(base, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 2 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "impostor"],
+        ["p2", "impostor"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+    if (!started.ok) throw new Error(started.error.message);
+
+    let state = submitAllAnswers(started.value);
+    state = expectOk(revealQuestion(state));
+    state = expectOk(startDiscussion(state));
+    state = expectOk(endDiscussion(state));
+    state = expectOk(castVote(state, "p1", "p3"));
+    state = expectOk(castVote(state, "p2", "p1"));
+    state = expectOk(castVote(state, "p3", "p1"));
+    state = expectOk(castVote(state, "p4", "p1"));
+    state = expectOk(closeVotingAndResolve(state, { allowMissingVotes: false }));
+
+    const finalized = finalizeRound(state);
+    expect(finalized.ok).toBe(true);
+    if (!finalized.ok) return;
+
+    expect(finalized.value.scoreboard.p1?.totalPoints).toBe(0);
+    expect(finalized.value.scoreboard.p2?.totalPoints).toBe(3);
+    expect(finalized.value.scoreboard.p3?.totalPoints).toBe(1);
+    expect(finalized.value.scoreboard.p4?.totalPoints).toBe(1);
+  });
+});
+
+describe("winner selection", () => {
+  it("uses impostor-survival wins as first tiebreak", () => {
+    const state = createInitialGameState({
+      lobbyId: "l1",
+      players: players(3),
+      settings: defaultSettings(),
+    });
+
+    const withScores = {
+      ...state,
+      phase: "game_over" as const,
+      scoreboard: {
+        p1: { totalPoints: 5, impostorSurvivalWins: 2 },
+        p2: { totalPoints: 5, impostorSurvivalWins: 1 },
+        p3: { totalPoints: 2, impostorSurvivalWins: 0 },
+      },
+    };
+
+    const result = computeWinnerSummary(withScores);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.winnerPlayerIds).toEqual(["p1"]);
+    expect(result.value.reason).toBe("impostor_survival_tiebreak");
+  });
+
+  it("requires explicit random winner when both score and survival wins tie", () => {
+    const state = createInitialGameState({
+      lobbyId: "l1",
+      players: players(2),
+      settings: defaultSettings(),
+    });
+
+    const withScores = {
+      ...state,
+      phase: "game_over" as const,
+      scoreboard: {
+        p1: { totalPoints: 5, impostorSurvivalWins: 2 },
+        p2: { totalPoints: 5, impostorSurvivalWins: 2 },
+      },
+    };
+
+    const unresolved = computeWinnerSummary(withScores);
+    expect(unresolved.ok).toBe(false);
+    if (unresolved.ok) return;
+    expect(unresolved.error.code).toBe("missing_tiebreak");
+
+    const resolved = computeWinnerSummary(withScores, "p2");
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.value.winnerPlayerIds).toEqual(["p2"]);
+    expect(resolved.value.reason).toBe("random_tiebreak");
   });
 });
 
