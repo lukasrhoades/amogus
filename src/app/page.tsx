@@ -91,8 +91,7 @@ export default function HomePage() {
 
   const [snapshot, setSnapshot] = useState<LobbySnapshot | null>(null);
   const [activeLobbyId, setActiveLobbyId] = useState<string>("demo-lobby");
-  const [createLobbyId, setCreateLobbyId] = useState<string>("demo-lobby");
-  const [removePlayerId, setRemovePlayerId] = useState<string>("p5");
+  const [removePlayerId, setRemovePlayerId] = useState<string>("");
   const [answerText, setAnswerText] = useState<string>("demo-answer");
   const [voteTargetId, setVoteTargetId] = useState<string>("p2");
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false);
@@ -192,7 +191,7 @@ export default function HomePage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        lobbyId: createLobbyId,
+        lobbyId: activeLobbyId,
       }),
     });
 
@@ -202,9 +201,8 @@ export default function HomePage() {
       return;
     }
 
-    setActiveLobbyId(createLobbyId);
-    setMessage(`Lobby ${createLobbyId} created.`);
-    await loadLobby(createLobbyId);
+    setMessage(`Lobby ${activeLobbyId} created.`);
+    await loadLobby(activeLobbyId);
   }
 
   async function joinLobby() {
@@ -373,6 +371,7 @@ export default function HomePage() {
   const canHostEndDiscussion = isHost && round?.phase === "discussion";
   const canHostCloseVoting = isHost && round?.phase === "voting";
   const canHostFinalizeRound = isHost && snapshot?.phase === "round_result";
+  const removablePlayers = (snapshot?.players ?? []).filter((player) => player.id !== session?.userId);
   const hasValidVoteTarget = voteTargets.some((target) => target.id === voteTargetId);
 
   useEffect(() => {
@@ -385,11 +384,22 @@ export default function HomePage() {
     setVoteTargetId(voteTargets[0]?.id ?? "");
   }, [voteTargetId, voteTargets]);
 
+  useEffect(() => {
+    if (removablePlayers.length === 0) {
+      setRemovePlayerId("");
+      return;
+    }
+    if (removablePlayers.some((player) => player.id === removePlayerId)) {
+      return;
+    }
+    setRemovePlayerId(removablePlayers[0]?.id ?? "");
+  }, [removePlayerId, removablePlayers]);
+
   return (
     <main>
       <div className="container">
         <h1>Social Deduction Games</h1>
-        <p>Login-based prototype: actions use server-side authenticated identity.</p>
+        <p>Full Squad Gaming impostor questions</p>
 
         <h2>Auth</h2>
         <p>
@@ -427,36 +437,55 @@ export default function HomePage() {
           </p>
         ) : null}
 
-        <h2>Lobby Setup</h2>
+        {session === null ? (
+          <p>{message}</p>
+        ) : null}
+        {session === null ? null : (
+          <>
+
+        <h2>Lobby</h2>
         <p>
-          Active Lobby ID: <input value={activeLobbyId} onChange={(e) => setActiveLobbyId(e.target.value)} />{" "}
-          <button type="button" onClick={() => loadLobby(activeLobbyId)}>
-            Load Lobby
-          </button>
-        </p>
-        <p>
-          Create ID: <input value={createLobbyId} onChange={(e) => setCreateLobbyId(e.target.value)} />{" "}
-          <button type="button" onClick={createLobby}>
-            Create Lobby
-          </button>{" "}
+          Lobby ID: <input value={activeLobbyId} onChange={(e) => setActiveLobbyId(e.target.value)} />{" "}
           <button type="button" onClick={joinLobby}>
-            Join Active Lobby
-          </button>{" "}
-          <button type="button" onClick={deleteLobby}>
-            Delete Active Lobby (Host)
+            Join
           </button>
-        </p>
-        <p>
-          Remove Player ID: <input value={removePlayerId} onChange={(e) => setRemovePlayerId(e.target.value)} />{" "}
-          <button type="button" onClick={() => runCommand({ type: "remove_player", payload: { playerId: removePlayerId } })}>
-            Host Remove Player
+          <button type="button" onClick={createLobby}>
+            Create
+          </button>{" "}
+          <button type="button" onClick={() => loadLobby(activeLobbyId)}>
+            Refresh
           </button>{" "}
           <button type="button" onClick={() => runCommand({ type: "leave_lobby", payload: {} })}>
-            Leave Lobby
+            Leave
           </button>
         </p>
+        {isHost ? (
+          <p>
+            <button type="button" onClick={deleteLobby}>
+              Delete Lobby
+            </button>
+          </p>
+        ) : null}
+        {isHost && removablePlayers.length > 0 ? (
+          <p>
+            Remove Player:{" "}
+            <select value={removePlayerId} onChange={(e) => setRemovePlayerId(e.target.value)}>
+              {removablePlayers.map((player) => (
+                <option key={player.id} value={player.id}>
+                  {player.displayName}
+                </option>
+              ))}
+            </select>{" "}
+            <button
+              type="button"
+              onClick={() => runCommand({ type: "remove_player", payload: { playerId: removePlayerId } })}
+            >
+              Remove
+            </button>
+          </p>
+        ) : null}
 
-        <h2>Game</h2>
+        <h2>Round</h2>
         <p>
           Lobby Status: {snapshot?.status ?? "(none)"} | Phase: {snapshot?.phase ?? "(none)"} | Round{" "}
           {snapshot?.completedRounds ?? 0}/{snapshot?.plannedRounds ?? 0}
@@ -472,6 +501,14 @@ export default function HomePage() {
         ) : (
           <p>{snapshot?.viewerRound === null ? "No active round." : "You are sat out this round."}</p>
         )}
+        <div>
+          <p>Scoreboard:</p>
+          {(snapshot?.players ?? []).map((player) => (
+            <p key={player.id}>
+              {player.displayName}: {snapshot?.scoreboard[player.id]?.totalPoints ?? 0} points
+            </p>
+          ))}
+        </div>
 
         {round !== null && round.trueQuestion !== null ? <p>True question: {round.trueQuestion}</p> : null}
         {round !== null && round.revealedAnswers !== null ? (
@@ -647,12 +684,14 @@ export default function HomePage() {
         </p>
         {questionPairs.map((pair) => (
           <p key={pair.id}>
-            {pair.id}: A[{pair.promptA.target}] {pair.promptA.text} | B[{pair.promptB.target}] {pair.promptB.text}{" "}
+            A[{pair.promptA.target}] {pair.promptA.text} | B[{pair.promptB.target}] {pair.promptB.text}{" "}
             <button type="button" onClick={() => deleteQuestionPair(pair.id)}>
               Delete
             </button>
           </p>
         ))}
+          </>
+        )}
 
       </div>
     </main>
