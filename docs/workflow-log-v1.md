@@ -53,6 +53,12 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - `typescript@5.9.3`
 - `vitest@4.0.18`
 - `@types/node@25.2.3`
+- `next@16.1.6`
+- `react@19.2.4`
+- `react-dom@19.2.4`
+- `zod@4.3.6`
+- `@types/react@19.2.14`
+- `@types/react-dom@19.2.3`
 - Command: `npm ls --depth=0`
 - Result: confirms installed versions above.
 - Command: `npm audit --omit=dev`
@@ -87,7 +93,8 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Rules were transcribed directly from session confirmations.
 
 ## 13. Final Risks And Follow-Ups
-- Next.js delivery layer not scaffolded yet.
+- Next.js scaffold exists with minimal API boundaries and demo seed/read flow.
 - Boundary validation and auth not implemented yet.
 - Need tests for remaining scoring branches (`0 impostor`, `2 impostor`) and winner-tiebreak function.
-- Need boundary-layer input validation (`zod`) and websocket/API contract tests.
+- Need expanded boundary-layer validation coverage for command endpoints (only read/seed routes exist).
+- Need websocket transport and auth integration.
