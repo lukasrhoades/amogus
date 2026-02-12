@@ -30,6 +30,14 @@ type LobbySnapshot = {
     answersCount: number;
     votesCount: number;
     eliminatedPlayerId: string | null;
+    trueQuestion: string | null;
+    alternativeQuestion: string | null;
+    revealedAnswers: Array<{
+      playerId: string;
+      displayName: string;
+      answer: string;
+    }> | null;
+    revealedRoles: Record<string, "impostor" | "crew"> | null;
   };
   viewerRound: null | {
     viewerPlayerId: string;

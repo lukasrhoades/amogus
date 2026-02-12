@@ -23,6 +23,14 @@ export type SerializedGameState = {
     answersCount: number;
     votesCount: number;
     eliminatedPlayerId: string | null;
+    trueQuestion: string | null;
+    alternativeQuestion: string | null;
+    revealedAnswers: Array<{
+      playerId: string;
+      displayName: string;
+      answer: string;
+    }> | null;
+    revealedRoles: Record<string, "impostor" | "crew"> | null;
   };
   viewerRound: null | {
     viewerPlayerId: string;
@@ -50,6 +58,24 @@ function promptForRole(
     return pair.promptB.text;
   }
   return null;
+}
+
+function isCrewPermissible(prompt: QuestionPair["promptA"]): boolean {
+  return prompt.target === "crew" || prompt.target === "both";
+}
+
+function isImpostorPermissible(prompt: QuestionPair["promptA"]): boolean {
+  return prompt.target === "impostor" || prompt.target === "both";
+}
+
+function revealedQuestions(pair: QuestionPair): { trueQuestion: string; alternativeQuestion: string | null } {
+  const prompts = [pair.promptA, pair.promptB];
+  const truePrompt = prompts.find(isCrewPermissible) ?? pair.promptA;
+  const alternativePrompt = prompts.find((prompt) => isImpostorPermissible(prompt) && prompt.text !== truePrompt.text) ?? null;
+  return {
+    trueQuestion: truePrompt.text,
+    alternativeQuestion: alternativePrompt?.text ?? null,
+  };
 }
 
 export function serializeGameState(state: GameState, viewerPlayerId?: string): SerializedGameState {
@@ -102,6 +128,26 @@ export function serializeGameState(state: GameState, viewerPlayerId?: string): S
             answersCount: Object.keys(state.currentRound.answers).length,
             votesCount: Object.keys(state.currentRound.votes).length,
             eliminatedPlayerId: state.currentRound.eliminatedPlayerId,
+            trueQuestion:
+              state.currentRound.phase === "prompting"
+                ? null
+                : revealedQuestions(state.currentRound.selectedQuestionPair).trueQuestion,
+            alternativeQuestion:
+              state.currentRound.phase === "prompting"
+                ? null
+                : revealedQuestions(state.currentRound.selectedQuestionPair).alternativeQuestion,
+            revealedAnswers:
+              state.currentRound.phase === "prompting"
+                ? null
+                : state.currentRound.activePlayerIds.map((playerId) => ({
+                    playerId,
+                    displayName: state.players[playerId]?.displayName ?? playerId,
+                    answer: state.currentRound?.answers[playerId] ?? "",
+                  })),
+            revealedRoles:
+              state.currentRound.phase === "round_result"
+                ? state.currentRound.roles
+                : null,
           },
     viewerRound,
   };

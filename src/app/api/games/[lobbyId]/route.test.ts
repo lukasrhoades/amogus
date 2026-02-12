@@ -137,4 +137,110 @@ describe("game read route viewer prompts", () => {
     expect(p3Json.viewerRound?.role).toBe("crew");
     expect(p3Json.viewerRound?.prompt).toBe("Crew Prompt");
   });
+
+  it("reveals true question and answers after reveal phase starts", async () => {
+    const hostCookie = await authCookieFor(hostUsername);
+    const p2Cookie = await authCookieFor(p2Username);
+    const p3Cookie = await authCookieFor(p3Username);
+    const p4Cookie = await authCookieFor(p4Username);
+
+    await setupLobby("reveal-lobby");
+
+    const createdPair = await createQuestionPair(
+      new Request("http://localhost/api/question-pairs", {
+        method: "POST",
+        headers: cookieHeader(hostCookie),
+        body: JSON.stringify({
+          promptA: { text: "True Crew Question", target: "crew" },
+          promptB: { text: "Impostor Question", target: "impostor" },
+        }),
+      }),
+    );
+    const pairJson = (await createdPair.json()) as {
+      pair: {
+        id: string;
+        ownerId: string;
+        promptA: { text: string; target: "crew" | "impostor" | "both" };
+        promptB: { text: string; target: "crew" | "impostor" | "both" };
+      };
+    };
+
+    await runCommand(
+      new Request("http://localhost/api/games/reveal-lobby/commands", {
+        method: "POST",
+        headers: cookieHeader(hostCookie),
+        body: JSON.stringify({
+          type: "start_round",
+          payload: {
+            selection: {
+              questionPair: pairJson.pair,
+              impostorCount: 1,
+            },
+            roundPolicy: {
+              eligibilityEnabled: false,
+              allowVoteChanges: true,
+            },
+            roleAssignment: {
+              p1: "crew",
+              p2: "impostor",
+              p3: "crew",
+              p4: "crew",
+            },
+          },
+        }),
+      }),
+      context("reveal-lobby"),
+    );
+
+    for (const [cookie, answer] of [
+      [hostCookie, "a1"],
+      [p2Cookie, "a2"],
+      [p3Cookie, "a3"],
+      [p4Cookie, "a4"],
+    ] as const) {
+      await runCommand(
+        new Request("http://localhost/api/games/reveal-lobby/commands", {
+          method: "POST",
+          headers: cookieHeader(cookie),
+          body: JSON.stringify({
+            type: "submit_answer",
+            payload: { answer },
+          }),
+        }),
+        context("reveal-lobby"),
+      );
+    }
+
+    await runCommand(
+      new Request("http://localhost/api/games/reveal-lobby/commands", {
+        method: "POST",
+        headers: cookieHeader(hostCookie),
+        body: JSON.stringify({
+          type: "reveal_question",
+          payload: {},
+        }),
+      }),
+      context("reveal-lobby"),
+    );
+
+    const p3View = await getLobby(
+      new Request("http://localhost/api/games/reveal-lobby", {
+        method: "GET",
+        headers: cookieHeader(p3Cookie),
+      }),
+      context("reveal-lobby"),
+    );
+    const p3Json = (await p3View.json()) as {
+      currentRound: {
+        trueQuestion: string | null;
+        alternativeQuestion: string | null;
+        revealedAnswers: Array<{ answer: string }> | null;
+      } | null;
+    };
+
+    expect(p3View.status).toBe(200);
+    expect(p3Json.currentRound?.trueQuestion).toBe("True Crew Question");
+    expect(p3Json.currentRound?.alternativeQuestion).toBe("Impostor Question");
+    expect(p3Json.currentRound?.revealedAnswers?.map((a) => a.answer)).toEqual(["a1", "a2", "a3", "a4"]);
+  });
 });
