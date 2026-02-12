@@ -61,6 +61,8 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 
 ## 7. Boundary Safety Checks
 - Deferred to boundary adapters (`zod` schemas and API/socket ingress) once web layer is scaffolded.
+- Runtime adapter selection now supports `GAME_SESSION_REPO=auto`, which attempts Prisma and falls back to in-memory when DB is unavailable.
+- Route tests pin `GAME_SESSION_REPO=memory` to avoid environment-coupled failures.
 
 ## 8. Security Log
 - Dependencies introduced:
@@ -117,6 +119,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - host timeout command ends lobby when connected count falls below 4
 - extended host pause mode (1 hour watchdog) delays timeout end condition
 - Latest result: `29` tests passing.
+- Latest result: `31` tests passing.
 - Latest result: `30` tests passing.
 
 ## 10. Red-Team Log

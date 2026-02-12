@@ -20,6 +20,7 @@ async function postCommand(lobbyId: string, body: unknown) {
 
 describe("game command route", () => {
   beforeEach(() => {
+    process.env.GAME_SESSION_REPO = "memory";
     resetRuntimeForTests();
   });
 
