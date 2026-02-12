@@ -28,6 +28,7 @@ type LobbySnapshot = {
     activePlayerIds: string[];
     satOutPlayerId: string | null;
     answersCount: number;
+    answersSubmittedBy: string[];
     revealedAnswerCount: number;
     votesCount: number;
     votesSubmittedBy: string[];
@@ -372,6 +373,17 @@ export default function HomePage() {
   const canHostEndDiscussion = isHost && round?.phase === "discussion";
   const canHostCloseVoting = isHost && round?.phase === "voting";
   const canHostFinalizeRound = isHost && snapshot?.phase === "round_result";
+  const hasValidVoteTarget = voteTargets.some((target) => target.id === voteTargetId);
+
+  useEffect(() => {
+    if (voteTargets.length === 0) {
+      return;
+    }
+    if (voteTargets.some((target) => target.id === voteTargetId)) {
+      return;
+    }
+    setVoteTargetId(voteTargets[0]?.id ?? "");
+  }, [voteTargetId, voteTargets]);
 
   return (
     <main>
@@ -527,6 +539,20 @@ export default function HomePage() {
             Revealed answers: {round.revealedAnswerCount}/{round.activePlayerIds.length}
           </p>
         ) : null}
+        {isHost && round?.phase === "prompting" ? (
+          <div>
+            <p>Answer status (host only):</p>
+            {round.activePlayerIds.map((playerId) => {
+              const displayName = snapshot?.players.find((p) => p.id === playerId)?.displayName ?? playerId;
+              const answered = round.answersSubmittedBy.includes(playerId);
+              return (
+                <p key={playerId}>
+                  {displayName}: {answered ? "submitted" : "waiting"}
+                </p>
+              );
+            })}
+          </div>
+        ) : null}
         {isHost && round?.phase === "voting" ? (
           <div>
             <p>Vote status (host only):</p>
@@ -552,7 +578,11 @@ export default function HomePage() {
                   </option>
                 ))}
               </select>{" "}
-              <button type="button" onClick={() => runCommand({ type: "cast_vote", payload: { targetId: voteTargetId } })}>
+              <button
+                type="button"
+                disabled={!hasValidVoteTarget}
+                onClick={() => runCommand({ type: "cast_vote", payload: { targetId: voteTargetId } })}
+              >
                 Cast Vote
               </button>
             </>

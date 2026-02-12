@@ -21,6 +21,7 @@ export type SerializedGameState = {
     activePlayerIds: string[];
     satOutPlayerId: string | null;
     answersCount: number;
+    answersSubmittedBy: string[];
     revealedAnswerCount: number;
     votesCount: number;
     votesSubmittedBy: string[];
@@ -128,6 +129,9 @@ export function serializeGameState(state: GameState, viewerPlayerId?: string): S
             activePlayerIds: state.currentRound.activePlayerIds,
             satOutPlayerId: state.currentRound.satOutPlayerId,
             answersCount: Object.keys(state.currentRound.answers).length,
+            answersSubmittedBy: state.currentRound.activePlayerIds.filter(
+              (playerId) => state.currentRound?.answers[playerId] !== undefined,
+            ),
             revealedAnswerCount: state.currentRound.revealedAnswerCount,
             votesCount: Object.keys(state.currentRound.votes).length,
             votesSubmittedBy: state.currentRound.activePlayerIds.filter(
