@@ -335,7 +335,7 @@ export default function HomePage() {
       if (payload.error === "missing_tiebreak") {
         setTieCandidates(payload.tieCandidates ?? []);
       }
-      setMessage(`Command failed: ${payload.error} (${payload.message})`);
+      setMessage(describeCommandError(payload.error, payload.message));
       return;
     }
 
@@ -579,7 +579,7 @@ export default function HomePage() {
       }),
     });
     if (!response.ok) {
-      setMessage("Failed to save preset.");
+      setMessage("Could not save preset. Check the name and settings values.");
       return;
     }
     await loadSettingsPresets();
@@ -595,7 +595,7 @@ export default function HomePage() {
     }
     const response = await fetch(`/api/settings-presets/${name}`, { method: "DELETE" });
     if (!response.ok) {
-      setMessage("Failed to delete preset.");
+      setMessage("Could not delete preset.");
       return;
     }
     await loadSettingsPresets();
@@ -653,11 +653,14 @@ export default function HomePage() {
 
         <h2>Lobby</h2>
         <p>
+          You are: {isHost ? "Host" : "Player"}
+        </p>
+        <p>
           Lobby ID: <input value={activeLobbyId} onChange={(e) => setActiveLobbyId(e.target.value)} />{" "}
-          <button type="button" onClick={joinLobby}>
+          <button type="button" onClick={joinLobby} disabled={activeLobbyId.trim().length < 1}>
             Join
           </button>
-          <button type="button" onClick={createLobby}>
+          <button type="button" onClick={createLobby} disabled={activeLobbyId.trim().length < 4}>
             Create
           </button>{" "}
           <button type="button" onClick={() => loadLobby(activeLobbyId)}>
@@ -686,6 +689,7 @@ export default function HomePage() {
             </select>{" "}
             <button
               type="button"
+              disabled={removePlayerId.trim().length < 1}
               onClick={() => runCommand({ type: "remove_player", payload: { playerId: removePlayerId } })}
             >
               Remove
@@ -825,7 +829,7 @@ export default function HomePage() {
               </select>
             </p>
             <p>
-              <button type="button" onClick={saveSettings}>
+              <button type="button" onClick={saveSettings} disabled={settingsPlannedRounds < 5 || settingsPlannedRounds > 30}>
                 Save Settings
               </button>
             </p>
@@ -1043,4 +1047,27 @@ export default function HomePage() {
       </div>
     </main>
   );
+}
+
+function describeCommandError(code: string, fallbackMessage: string): string {
+  const known: Record<string, string> = {
+    forbidden: "Only the host can do that.",
+    invalid_phase: "That action is not available in the current phase.",
+    missing_answers: "Waiting for all active players to submit answers.",
+    missing_votes: "Waiting for all active players to vote.",
+    missing_tiebreak: "A tie was detected. Host must resolve the tie.",
+    invalid_round: "Round settings are invalid for current players/questions.",
+    invalid_settings: "Some settings are invalid. Check rounds, weights, and scoring values.",
+    insufficient_players: "At least 4 active players are required.",
+    question_pool_empty: "No available question pairs in the lobby pool.",
+    player_not_active: "That player is not active in this round.",
+    vote_locked: "Vote changes are disabled for this round.",
+    self_vote_forbidden: "You cannot vote for yourself.",
+    game_not_found: "This lobby no longer exists.",
+  };
+  const translated = known[code];
+  if (translated !== undefined) {
+    return translated;
+  }
+  return `Action failed: ${fallbackMessage}`;
 }
