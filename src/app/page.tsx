@@ -528,6 +528,19 @@ export default function HomePage() {
     return `${(value * 100).toFixed(1)}%`;
   }
 
+  function normalizedPresetName(name: string): string {
+    return name.trim().toUpperCase();
+  }
+
+  const impostorWeightSum = settingsZeroWeight + settingsOneWeight + settingsTwoWeight;
+  const impostorWeightsValid = Math.abs(impostorWeightSum - 1) <= 0.000001;
+  const plannedRoundsValid = Number.isInteger(settingsPlannedRounds) && settingsPlannedRounds >= 5 && settingsPlannedRounds <= 30;
+  const discussionTimerValid =
+    Number.isInteger(settingsDiscussionTimerSeconds) &&
+    settingsDiscussionTimerSeconds >= 0 &&
+    settingsDiscussionTimerSeconds <= 600;
+  const settingsFormValid = plannedRoundsValid && impostorWeightsValid && discussionTimerValid;
+
   async function saveSettings() {
     await runCommand({
       type: "update_settings",
@@ -573,16 +586,32 @@ export default function HomePage() {
       setMessage("Preset not found.");
       return;
     }
+    if (!window.confirm(`Load preset ${preset.name}? This replaces current form values.`)) {
+      return;
+    }
     applyPresetConfig(preset.config);
     setMessage(`Preset loaded: ${preset.name}`);
   }
 
   async function savePreset(name: string) {
+    const normalized = normalizedPresetName(name);
+    if (normalized.length < 1 || normalized.length > 32) {
+      setMessage("Preset name must be 1-32 characters.");
+      return;
+    }
+    if (!settingsFormValid) {
+      setMessage("Fix settings errors before saving preset.");
+      return;
+    }
+    const exists = settingsPresets.some((preset) => preset.name === normalized);
+    if (exists && !window.confirm(`Preset ${normalized} already exists. Overwrite it?`)) {
+      return;
+    }
     const response = await fetch("/api/settings-presets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name,
+        name: normalized,
         config: {
           plannedRounds: settingsPlannedRounds,
           roundsCappedByQuestions: settingsRoundsCappedByQuestions,
@@ -609,14 +638,17 @@ export default function HomePage() {
       return;
     }
     await loadSettingsPresets();
-    setSelectedPresetName(name.trim().toUpperCase());
-    setMessage(`Preset saved: ${name.trim().toUpperCase()}`);
+    setSelectedPresetName(normalized);
+    setMessage(`Preset saved: ${normalized}`);
   }
 
   async function deleteSelectedPreset() {
     const name = selectedPresetName.trim().toUpperCase();
     if (name === "DEFAULT") {
       setMessage("DEFAULT preset cannot be deleted.");
+      return;
+    }
+    if (!window.confirm(`Delete preset ${name}?`)) {
       return;
     }
     const response = await fetch(`/api/settings-presets/${name}`, { method: "DELETE" });
@@ -737,7 +769,11 @@ export default function HomePage() {
               <button type="button" onClick={loadSelectedPresetToForm}>
                 Load Preset
               </button>{" "}
-              <button type="button" onClick={() => savePreset("DEFAULT")}>
+              <button
+                type="button"
+                disabled={!settingsFormValid}
+                onClick={() => savePreset("DEFAULT")}
+              >
                 Save as DEFAULT
               </button>{" "}
               <button type="button" onClick={deleteSelectedPreset}>
@@ -747,7 +783,7 @@ export default function HomePage() {
             <p>
               New preset name:{" "}
               <input value={newPresetName} onChange={(e) => setNewPresetName(e.target.value)} />{" "}
-              <button type="button" onClick={() => savePreset(newPresetName)}>
+              <button type="button" disabled={!settingsFormValid} onClick={() => savePreset(newPresetName)}>
                 Save as New Preset
               </button>
             </p>
@@ -785,6 +821,9 @@ export default function HomePage() {
               Impostor weights: 0={impostorWeightPercent(settingsZeroWeight)} 1=
               {impostorWeightPercent(settingsOneWeight)} 2={impostorWeightPercent(settingsTwoWeight)}
             </p>
+            {!impostorWeightsValid ? (
+              <p>Impostor weights must sum to 100%. Current total: {(impostorWeightSum * 100).toFixed(2)}%</p>
+            ) : null}
             <p>
               0 impostor:{" "}
               <input
@@ -854,6 +893,9 @@ export default function HomePage() {
                 onChange={(e) => setSettingsDiscussionTimerSeconds(Number(e.target.value))}
               />
             </p>
+            {!discussionTimerValid ? (
+              <p>Discussion timer must be an integer between 0 and 600.</p>
+            ) : null}
             <p>
               Round eligibility (for next auto-start round):{" "}
               <select
@@ -865,7 +907,7 @@ export default function HomePage() {
               </select>
             </p>
             <p>
-              <button type="button" onClick={saveSettings} disabled={settingsPlannedRounds < 5 || settingsPlannedRounds > 30}>
+              <button type="button" onClick={saveSettings} disabled={!settingsFormValid}>
                 Save Settings
               </button>
             </p>
