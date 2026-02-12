@@ -57,8 +57,8 @@ function defaultQuestion(ownerId: PlayerId = "p1"): QuestionPair {
   return {
     id: "q1",
     ownerId,
-    canonicalQuestion: "What is your favorite color?",
-    impostorQuestion: "What is your favorite animal?",
+    promptA: { text: "What is your favorite color?", target: "crew" },
+    promptB: { text: "What is your favorite animal?", target: "impostor" },
   };
 }
 

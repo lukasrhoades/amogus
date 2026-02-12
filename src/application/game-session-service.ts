@@ -2,8 +2,10 @@ import {
   Result,
   TransitionErrorCode,
   GameState,
+  ImpostorCount,
   LobbyId,
   PlayerId,
+  QuestionPair,
   RoundCancellationReason,
   RoundRoleAssignment,
   RoundSelection,
@@ -26,8 +28,9 @@ import {
   submitAnswer,
 } from "../domain/game/state-machine";
 import { GameSessionRepo } from "../ports/game-session-repo";
+import { QuestionPairRepo } from "../ports/question-pair-repo";
 
-export type ServiceErrorCode = "game_not_found" | TransitionErrorCode;
+export type ServiceErrorCode = "game_not_found" | "question_pool_empty" | TransitionErrorCode;
 
 export type ServiceError = {
   code: ServiceErrorCode;
@@ -40,6 +43,16 @@ export type ServiceResult<T> =
 
 export type GameSessionServiceHooks = {
   onStateSaved?: (state: GameState) => void;
+};
+
+export type StartRoundAutoInput = {
+  roundPolicy?: RoundPolicyOverride | undefined;
+  impostorCountOverride?: ImpostorCount | undefined;
+};
+
+type RoundPolicyOverride = {
+  eligibilityEnabled?: boolean | undefined;
+  allowVoteChanges?: boolean | undefined;
 };
 
 function ok<T>(value: T): ServiceResult<T> {
@@ -68,6 +81,8 @@ export class GameSessionService {
   constructor(
     private readonly repo: GameSessionRepo,
     private readonly hooks: GameSessionServiceHooks = {},
+    private readonly questionPairs?: QuestionPairRepo,
+    private readonly randomFloat: () => number = Math.random,
   ) {}
 
   private async saveAndNotify(state: GameState): Promise<void> {
@@ -108,6 +123,120 @@ export class GameSessionService {
 
     await this.saveAndNotify(next.value);
     return ok(next.value);
+  }
+
+  async startRoundAuto(lobbyId: LobbyId, input: StartRoundAutoInput = {}): Promise<ServiceResult<GameState>> {
+    if (this.questionPairs === undefined) {
+      return err("invalid_round", "Question pair storage is not configured");
+    }
+
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+    const state = stateResult.value;
+
+    const ownerIds = Object.keys(state.players);
+    const allPairs = await this.questionPairs.listByOwnerIds(ownerIds);
+    const availablePairs = state.settings.questionReuseEnabled
+      ? allPairs
+      : allPairs.filter((pair) => !state.usedQuestionPairIds.has(pair.id));
+
+    if (availablePairs.length === 0) {
+      return err("question_pool_empty", "No available question pairs in this lobby pool");
+    }
+
+    const selectedQuestion = availablePairs[this.randomIndex(availablePairs.length)];
+    if (selectedQuestion === undefined) {
+      return err("invalid_round", "Failed to select a question pair");
+    }
+    const impostorCount = input.impostorCountOverride ?? this.sampleImpostorCount(state);
+    const roundPolicy = this.resolveRoundPolicy(state, input.roundPolicy);
+    const roleAssignment = this.generateRoleAssignment(state, selectedQuestion, roundPolicy, impostorCount);
+
+    if (!roleAssignment.ok) {
+      return roleAssignment;
+    }
+
+    const next = startRound(state, {
+      selection: {
+        questionPair: selectedQuestion,
+        impostorCount,
+      },
+      roundPolicy,
+      roleAssignment: roleAssignment.value,
+    });
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+
+    await this.saveAndNotify(next.value);
+    return ok(next.value);
+  }
+
+  private randomIndex(size: number): number {
+    return Math.floor(this.randomFloat() * size);
+  }
+
+  private sampleImpostorCount(state: GameState): ImpostorCount {
+    const roll = this.randomFloat();
+    const zeroThreshold = state.settings.impostorWeights.zero;
+    const oneThreshold = zeroThreshold + state.settings.impostorWeights.one;
+
+    if (roll < zeroThreshold) {
+      return 0;
+    }
+    if (roll < oneThreshold) {
+      return 1;
+    }
+    return 2;
+  }
+
+  private resolveRoundPolicy(state: GameState, override?: RoundPolicyOverride): RoundPolicy {
+    const playerCount = Object.keys(state.players).length;
+    return {
+      eligibilityEnabled: override?.eligibilityEnabled ?? playerCount >= 5,
+      allowVoteChanges: override?.allowVoteChanges ?? true,
+    };
+  }
+
+  private generateRoleAssignment(
+    state: GameState,
+    questionPair: QuestionPair,
+    roundPolicy: RoundPolicy,
+    impostorCount: ImpostorCount,
+  ): ServiceResult<RoundRoleAssignment> {
+    const playerIds = Object.keys(state.players);
+    const activePlayerIds =
+      roundPolicy.eligibilityEnabled && playerIds.length >= 5 && state.players[questionPair.ownerId] !== undefined
+        ? playerIds.filter((id) => id !== questionPair.ownerId)
+        : playerIds;
+
+    if (activePlayerIds.length < 4) {
+      return err("insufficient_players", "Active player count is below minimum required for round");
+    }
+    if (impostorCount > activePlayerIds.length) {
+      return err("invalid_round", "Impostor count cannot exceed active players");
+    }
+
+    const shuffled = [...activePlayerIds];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = this.randomIndex(i + 1);
+      const current = shuffled[i];
+      const picked = shuffled[j];
+      if (current === undefined || picked === undefined) {
+        continue;
+      }
+      shuffled[i] = picked;
+      shuffled[j] = current;
+    }
+
+    const impostorIds = new Set(shuffled.slice(0, impostorCount));
+    const assignment: RoundRoleAssignment = {};
+    for (const playerId of activePlayerIds) {
+      assignment[playerId] = impostorIds.has(playerId) ? "impostor" : "crew";
+    }
+    return ok(assignment);
   }
 
   async submitAnswer(lobbyId: LobbyId, playerId: PlayerId, answer: string): Promise<ServiceResult<GameState>> {

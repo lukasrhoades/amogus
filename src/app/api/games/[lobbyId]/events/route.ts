@@ -1,5 +1,6 @@
 import { getRuntime } from "../../../../../server/runtime";
 import { serializeGameState } from "../../../../../server/serialize-game-state";
+import { readSessionFromRequest } from "../../../../../server/session/session";
 
 function sseData(value: unknown): string {
   return `data: ${JSON.stringify(value)}\n\n`;
@@ -11,6 +12,7 @@ export async function GET(
 ) {
   const { lobbyId } = await context.params;
   const runtime = getRuntime();
+  const session = readSessionFromRequest(request);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -18,11 +20,15 @@ export async function GET(
 
       const existing = await runtime.gameService.get(lobbyId);
       if (existing.ok) {
-        controller.enqueue(encoder.encode(sseData({ type: "state", state: serializeGameState(existing.value) })));
+        controller.enqueue(
+          encoder.encode(sseData({ type: "state", state: serializeGameState(existing.value, session?.playerId) })),
+        );
       }
 
       const unsubscribe = runtime.lobbyEvents.subscribe(lobbyId, (state) => {
-        controller.enqueue(encoder.encode(sseData({ type: "state", state: serializeGameState(state) })));
+        controller.enqueue(
+          encoder.encode(sseData({ type: "state", state: serializeGameState(state, session?.playerId) })),
+        );
       });
 
       const heartbeat = setInterval(() => {

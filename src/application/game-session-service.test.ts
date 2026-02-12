@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { GameSessionService } from "./game-session-service";
 import { InMemoryGameSessionRepo } from "../adapters/in-memory/in-memory-game-session-repo";
+import { InMemoryQuestionPairRepo } from "../adapters/in-memory/in-memory-question-pair-repo";
 import { createInitialGameState } from "../domain/game/state-machine";
 import { GameSettings, Player, PlayerId, QuestionPair, RoundRoleAssignment } from "../domain/game/types";
 
@@ -41,8 +42,8 @@ function defaultQuestion(ownerId: PlayerId = "p1"): QuestionPair {
   return {
     id: "q1",
     ownerId,
-    canonicalQuestion: "What is your favorite color?",
-    impostorQuestion: "What is your favorite animal?",
+    promptA: { text: "What is your favorite color?", target: "crew" },
+    promptB: { text: "What is your favorite animal?", target: "impostor" },
   };
 }
 
@@ -150,5 +151,24 @@ describe("GameSessionService", () => {
     expect(removed.ok).toBe(true);
     if (!removed.ok) return;
     expect(removed.value.players.p4).toBeUndefined();
+  });
+
+  it("starts round automatically from lobby question pool", async () => {
+    const gameRepo = new InMemoryGameSessionRepo();
+    const questionRepo = new InMemoryQuestionPairRepo();
+    const service = new GameSessionService(gameRepo, {}, questionRepo, () => 0.4);
+    const initial = createInitialGameState({
+      lobbyId: "l2",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+    await service.create(initial);
+    await questionRepo.create(defaultQuestion("p1"));
+
+    const started = await service.startRoundAuto("l2");
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+    expect(started.value.phase).toBe("prompting");
+    expect(started.value.currentRound?.impostorCount).toBe(1);
   });
 });

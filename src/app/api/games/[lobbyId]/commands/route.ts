@@ -11,6 +11,7 @@ const paramsSchema = z.object({
 });
 
 const roleAssignmentSchema = z.record(z.string().min(1), z.enum(["impostor", "crew"]));
+const promptTargetSchema = z.union([z.literal("crew"), z.literal("impostor"), z.literal("both")]);
 
 const commandSchema = z.discriminatedUnion("type", [
   z.object({
@@ -20,8 +21,14 @@ const commandSchema = z.discriminatedUnion("type", [
         questionPair: z.object({
           id: z.string().min(1),
           ownerId: z.string().min(1),
-          canonicalQuestion: z.string().min(1),
-          impostorQuestion: z.string().min(1),
+          promptA: z.object({
+            text: z.string().min(1),
+            target: promptTargetSchema,
+          }),
+          promptB: z.object({
+            text: z.string().min(1),
+            target: promptTargetSchema,
+          }),
         }),
         impostorCount: z.union([z.literal(0), z.literal(1), z.literal(2)]),
       }),
@@ -30,6 +37,19 @@ const commandSchema = z.discriminatedUnion("type", [
         allowVoteChanges: z.boolean(),
       }),
       roleAssignment: roleAssignmentSchema,
+    }),
+  }),
+  z.object({
+    type: z.literal("start_round_auto"),
+    payload: z.object({
+      roundPolicy: z
+        .object({
+          eligibilityEnabled: z.boolean(),
+          allowVoteChanges: z.boolean(),
+        })
+        .partial()
+        .optional(),
+      impostorCountOverride: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
     }),
   }),
   z.object({
@@ -130,6 +150,9 @@ function domainErrorStatus(code: string): number {
   if (code === "insufficient_players") {
     return 422;
   }
+  if (code === "question_pool_empty") {
+    return 422;
+  }
 
   return 400;
 }
@@ -137,6 +160,7 @@ function domainErrorStatus(code: string): number {
 function isHostOnlyCommand(commandType: Command["type"]): boolean {
   return (
     commandType === "start_round" ||
+    commandType === "start_round_auto" ||
     commandType === "reveal_question" ||
     commandType === "start_discussion" ||
     commandType === "end_discussion" ||
@@ -171,6 +195,8 @@ async function runCommand(lobbyId: string, command: Command, sessionPlayerId: st
   switch (command.type) {
     case "start_round":
       return service.startRound(lobbyId, command.payload);
+    case "start_round_auto":
+      return service.startRoundAuto(lobbyId, command.payload);
     case "submit_answer":
       return service.submitAnswer(lobbyId, sessionPlayerId, command.payload.answer);
     case "reveal_question":
@@ -264,6 +290,6 @@ export async function POST(
 
   return NextResponse.json({
     ok: true,
-    state: serializeGameState(result.value),
+    state: serializeGameState(result.value, session.playerId),
   });
 }

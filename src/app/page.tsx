@@ -31,6 +31,12 @@ type LobbySnapshot = {
     votesCount: number;
     eliminatedPlayerId: string | null;
   };
+  viewerRound: null | {
+    viewerPlayerId: string;
+    isActive: boolean;
+    role: "impostor" | "crew" | null;
+    prompts: string[];
+  };
 };
 
 type CommandPayload =
@@ -41,8 +47,8 @@ type CommandPayload =
           questionPair: {
             id: string;
             ownerId: string;
-            canonicalQuestion: string;
-            impostorQuestion: string;
+            promptA: { text: string; target: "crew" | "impostor" | "both" };
+            promptB: { text: string; target: "crew" | "impostor" | "both" };
           };
           impostorCount: 0 | 1 | 2;
         };
@@ -53,6 +59,7 @@ type CommandPayload =
         roleAssignment: Record<string, "impostor" | "crew">;
       };
     }
+  | { type: "start_round_auto"; payload: { roundPolicy?: { eligibilityEnabled?: boolean; allowVoteChanges?: boolean } } }
   | { type: "submit_answer"; payload: { answer: string } }
   | { type: "reveal_question"; payload: Record<string, never> }
   | { type: "start_discussion"; payload: Record<string, never> }
@@ -75,6 +82,17 @@ export default function HomePage() {
   const [answerText, setAnswerText] = useState<string>("demo-answer");
   const [voteTargetId, setVoteTargetId] = useState<string>("p2");
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false);
+  const [promptAText, setPromptAText] = useState<string>("");
+  const [promptATarget, setPromptATarget] = useState<"crew" | "impostor" | "both">("crew");
+  const [promptBText, setPromptBText] = useState<string>("");
+  const [promptBTarget, setPromptBTarget] = useState<"crew" | "impostor" | "both">("impostor");
+  const [questionPairs, setQuestionPairs] = useState<
+    Array<{
+      id: string;
+      promptA: { text: string; target: "crew" | "impostor" | "both" };
+      promptB: { text: string; target: "crew" | "impostor" | "both" };
+    }>
+  >([]);
 
   useEffect(() => {
     if (activeLobbyId.trim() === "") {
@@ -120,6 +138,7 @@ export default function HomePage() {
     const payload = (await response.json()) as { session: Session };
     setSession(payload.session);
     setMessage(`Session ready: ${payload.session.displayName} (${payload.session.playerId})`);
+    await loadQuestionPairs();
   }
 
   async function createLobby() {
@@ -193,54 +212,56 @@ export default function HomePage() {
     setMessage(`Command succeeded: ${command.type}`);
   }
 
-  async function startDemoRound() {
-    if (snapshot === null) {
-      setMessage("Load a lobby before starting a round.");
+  async function startAutoRound() {
+    await runCommand({ type: "start_round_auto", payload: {} });
+  }
+
+  async function loadQuestionPairs() {
+    const response = await fetch("/api/question-pairs", { method: "GET" });
+    if (!response.ok) {
+      setQuestionPairs([]);
       return;
     }
+    const payload = (await response.json()) as {
+      pairs: Array<{
+        id: string;
+        promptA: { text: string; target: "crew" | "impostor" | "both" };
+        promptB: { text: string; target: "crew" | "impostor" | "both" };
+      }>;
+    };
+    setQuestionPairs(payload.pairs);
+  }
 
-    const host = snapshot.players.find((player) => player.isHost) ?? snapshot.players[0];
-    if (host === undefined) {
-      setMessage("No players in lobby.");
-      return;
-    }
-
-    const shouldSitOutOwner = snapshot.players.length >= 5;
-    const activePlayerIds = snapshot.players
-      .map((player) => player.id)
-      .filter((id) => !(shouldSitOutOwner && id === host.id));
-
-    if (activePlayerIds.length < 4) {
-      setMessage("Need at least 4 active players to start a round.");
-      return;
-    }
-
-    const impostorId = activePlayerIds[0];
-    const roleAssignment: Record<string, "impostor" | "crew"> = {};
-    activePlayerIds.forEach((id) => {
-      roleAssignment[id] = id === impostorId ? "impostor" : "crew";
+  async function createQuestionPair() {
+    const response = await fetch("/api/question-pairs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        promptA: { text: promptAText, target: promptATarget },
+        promptB: { text: promptBText, target: promptBTarget },
+      }),
     });
 
-    const questionId = `q-${Date.now()}`;
-    await runCommand({
-      type: "start_round",
-      payload: {
-        selection: {
-          questionPair: {
-            id: questionId,
-            ownerId: host.id,
-            canonicalQuestion: "What is your ideal weekend activity?",
-            impostorQuestion: "What is your favorite holiday destination?",
-          },
-          impostorCount: 1,
-        },
-        roundPolicy: {
-          eligibilityEnabled: shouldSitOutOwner,
-          allowVoteChanges: true,
-        },
-        roleAssignment,
-      },
-    });
+    if (!response.ok) {
+      const payload = (await response.json()) as { error: string; message?: string };
+      setMessage(`Create pair failed: ${payload.error} (${payload.message ?? ""})`);
+      return;
+    }
+
+    setPromptAText("");
+    setPromptBText("");
+    await loadQuestionPairs();
+    setMessage("Question pair created.");
+  }
+
+  async function deleteQuestionPair(pairId: string) {
+    const response = await fetch(`/api/question-pairs/${pairId}`, { method: "DELETE" });
+    if (!response.ok) {
+      setMessage("Delete pair failed.");
+      return;
+    }
+    await loadQuestionPairs();
+    setMessage("Question pair deleted.");
   }
 
   return (
@@ -287,8 +308,8 @@ export default function HomePage() {
 
         <h2>Round Commands</h2>
         <p>
-          <button type="button" onClick={startDemoRound}>
-            1) Start Demo Round (Host)
+          <button type="button" onClick={startAutoRound}>
+            1) Start Round (Host Auto)
           </button>{" "}
           Answer: <input value={answerText} onChange={(e) => setAnswerText(e.target.value)} />{" "}
           <button type="button" onClick={() => runCommand({ type: "submit_answer", payload: { answer: answerText } })}>
@@ -323,6 +344,45 @@ export default function HomePage() {
         </p>
 
         <p>{message}</p>
+
+        <h2>My Round View</h2>
+        <pre>
+          {snapshot?.viewerRound === null || snapshot?.viewerRound === undefined
+            ? "(none)"
+            : JSON.stringify(snapshot.viewerRound, null, 2)}
+        </pre>
+
+        <h2>My Question Pairs</h2>
+        <p>
+          Prompt A: <input value={promptAText} onChange={(e) => setPromptAText(e.target.value)} />{" "}
+          <select value={promptATarget} onChange={(e) => setPromptATarget(e.target.value as "crew" | "impostor" | "both")}>
+            <option value="crew">crew</option>
+            <option value="impostor">impostor</option>
+            <option value="both">both</option>
+          </select>
+        </p>
+        <p>
+          Prompt B: <input value={promptBText} onChange={(e) => setPromptBText(e.target.value)} />{" "}
+          <select value={promptBTarget} onChange={(e) => setPromptBTarget(e.target.value as "crew" | "impostor" | "both")}>
+            <option value="crew">crew</option>
+            <option value="impostor">impostor</option>
+            <option value="both">both</option>
+          </select>{" "}
+          <button type="button" onClick={createQuestionPair}>
+            Add Pair
+          </button>{" "}
+          <button type="button" onClick={loadQuestionPairs}>
+            Refresh
+          </button>
+        </p>
+        {questionPairs.map((pair) => (
+          <p key={pair.id}>
+            {pair.id}: A[{pair.promptA.target}] {pair.promptA.text} | B[{pair.promptB.target}] {pair.promptB.text}{" "}
+            <button type="button" onClick={() => deleteQuestionPair(pair.id)}>
+              Delete
+            </button>
+          </p>
+        ))}
 
         <h2>Lobby Snapshot</h2>
         <pre>{snapshot === null ? "(none)" : JSON.stringify(snapshot, null, 2)}</pre>

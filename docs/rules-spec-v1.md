@@ -7,7 +7,7 @@ This document is the source of truth for game-rule implementation.
 2. Determine impostor count for the round using weighted selection.
 3. Apply eligibility policy (if enabled) and derive active players.
 4. Assign roles (impostor/crew) to active players.
-5. Prompt active players with role-specific question.
+5. Prompt active players according to question-pair audience targeting.
 6. Collect answers from all active players (mandatory).
 7. Reveal true question, then reveal answers with player identity.
 8. Run discussion period.
@@ -41,6 +41,14 @@ This document is the source of truth for game-rule implementation.
 1. Default behavior: question pairs cannot repeat within the same game session.
 2. Host can enable `question reuse` to allow repeats in-game.
 3. A question used for a canceled/skipped round is still considered consumed when reuse is OFF.
+
+Question pair payload and validity:
+1. Each question pair has exactly two prompts: `promptA` and `promptB`.
+2. Each prompt has a target audience: `crew`, `impostor`, or `both`.
+3. Each pair must include at least one prompt permissible for crew.
+4. Each pair must include at least one prompt permissible for impostor.
+5. A prompt targeted to `both` counts as permissible for both crew and impostor.
+6. Prompt delivery during a round follows each prompt target exactly.
 
 ## 6. Eligibility Policy
 1. Eligibility policy can be toggled by host before each round starts.

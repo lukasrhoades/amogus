@@ -4,6 +4,7 @@ import { POST as runCommand } from "./route";
 import { GET as getLobby } from "../route";
 import { POST as createLobby } from "../../../lobbies/route";
 import { POST as joinLobby } from "../../../lobbies/[lobbyId]/join/route";
+import { POST as createQuestionPair } from "../../../question-pairs/route";
 import { resetRuntimeForTests } from "../../../../../server/runtime";
 import { encodeSessionCookieValue } from "../../../../../server/session/session";
 
@@ -61,6 +62,19 @@ async function setupLobby(lobbyId: string): Promise<void> {
   }
 }
 
+async function createPairFor(session: { playerId: string; displayName: string }, textSeed: string): Promise<void> {
+  const request = new Request("http://localhost/api/question-pairs", {
+    method: "POST",
+    headers: cookieHeader(session),
+    body: JSON.stringify({
+      promptA: { text: `${textSeed} crew`, target: "crew" },
+      promptB: { text: `${textSeed} impostor`, target: "impostor" },
+    }),
+  });
+  const response = await createQuestionPair(request);
+  expect(response.status).toBe(201);
+}
+
 describe("game command route", () => {
   beforeEach(() => {
     process.env.GAME_SESSION_REPO = "memory";
@@ -77,8 +91,8 @@ describe("game command route", () => {
           questionPair: {
             id: "q1",
             ownerId: "p1",
-            canonicalQuestion: "Q1",
-            impostorQuestion: "Q2",
+            promptA: { text: "Q1", target: "crew" },
+            promptB: { text: "Q2", target: "impostor" },
           },
           impostorCount: 1,
         },
@@ -107,8 +121,8 @@ describe("game command route", () => {
             questionPair: {
               id: "q2",
               ownerId: "p1",
-              canonicalQuestion: "Q1",
-              impostorQuestion: "Q2",
+              promptA: { text: "Q1", target: "crew" },
+              promptB: { text: "Q2", target: "impostor" },
             },
             impostorCount: 1,
           },
@@ -137,8 +151,8 @@ describe("game command route", () => {
             questionPair: {
               id: "q3",
               ownerId: "p1",
-              canonicalQuestion: "Q1",
-              impostorQuestion: "Q2",
+              promptA: { text: "Q1", target: "crew" },
+              promptB: { text: "Q2", target: "impostor" },
             },
             impostorCount: 1,
           },
@@ -174,6 +188,29 @@ describe("game command route", () => {
     const lobbyJson = (await lobbyResponse.json()) as { completedRounds: number };
     expect(lobbyResponse.status).toBe(200);
     expect(lobbyJson.completedRounds).toBe(1);
+  });
+
+  it("runs start_round_auto using lobby question pool", async () => {
+    await setupLobby("demo-lobby");
+    await createPairFor(hostSession, "host");
+    await createPairFor(p2Session, "p2");
+
+    const start = await postCommand(
+      "demo-lobby",
+      {
+        type: "start_round_auto",
+        payload: {},
+      },
+      hostSession,
+    );
+
+    expect(start.status).toBe(200);
+    const json = (await start.json()) as {
+      state: { phase: string; hasCurrentRound: boolean; currentRound: { impostorCount: number } | null };
+    };
+    expect(json.state.phase).toBe("prompting");
+    expect(json.state.hasCurrentRound).toBe(true);
+    expect(json.state.currentRound?.impostorCount).toBeTypeOf("number");
   });
 
   it("supports self leave_lobby and host remove_player", async () => {

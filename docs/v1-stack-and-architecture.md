@@ -65,7 +65,9 @@ Folder: `src/app` and `src/server`
 
 ## Core Domain Types (Initial)
 - `PlayerId`, `LobbyId`, `RoundNumber`
-- `QuestionPair { canonicalQuestion, impostorQuestion, ownerId }`
+- `QuestionPromptTarget = crew | impostor | both`
+- `QuestionPrompt { text, target }`
+- `QuestionPair { ownerId, promptA, promptB }`
 - `Role = Impostor | Crew`
 - `Phase = Setup | Prompting | Reveal | Discussion | Voting | RoundResult | GameOver`
 - `RoundConfig { allowZeroImpostors, allowTwoImpostors, eligibilityMode, discussionTimerSec }`
@@ -78,6 +80,11 @@ Folder: `src/app` and `src/server`
 4. Host configures rounds/scoring/impostor options/discussion timer.
 5. Full round loop works end-to-end.
 6. Scoreboard persists across rounds and game ends correctly.
+
+Question pair invariant for V1:
+1. At least one prompt in each pair must be permissible for crew.
+2. At least one prompt in each pair must be permissible for impostor.
+3. `both` satisfies permissibility for both sides.
 
 ## Explicitly Out Of Scope (For V1)
 1. Fancy UI/animations.

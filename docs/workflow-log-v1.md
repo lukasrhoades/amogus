@@ -11,6 +11,7 @@ Why: includes auth-adjacent behavior, multiplayer synchronization, and scoring i
 - `docs/v1-stack-and-architecture.md` (stack and layering decisions)
 - `docs/rules-spec-v1.md` (authoritative game rules)
 - User confirmations in this session (tie-break, scoring, disconnect, round-cap behavior).
+- User rule update: question pairs support per-prompt audience targeting (`crew|impostor|both`) with invariant that each pair is valid for both sides.
 
 ## 3. Abstractions + DSL Surface
 Implemented in:
@@ -32,6 +33,12 @@ Implemented in:
 - `src/app/api/session/route.ts`
 - `src/server/realtime/lobby-event-bus.ts`
 - `src/app/api/games/[lobbyId]/events/route.ts`
+- `src/ports/question-pair-repo.ts`
+- `src/application/question-pair-service.ts`
+- `src/adapters/in-memory/in-memory-question-pair-repo.ts`
+- `src/adapters/prisma/prisma-question-pair-repo.ts`
+- `src/app/api/question-pairs/route.ts`
+- `src/app/api/question-pairs/[pairId]/route.ts`
 
 DSL-style commands (pure domain transitions):
 - `createInitialGameState`
@@ -72,6 +79,8 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Route tests pin `GAME_SESSION_REPO=memory` to avoid environment-coupled failures.
 - Session identity is enforced at route boundaries using cookie-backed session parsing.
 - Realtime boundary added: SSE stream per lobby with in-process event bus fanout.
+- Question-pair ingress now validates prompt target unions and prompt text length with Zod.
+- Question-pair create flow enforces invariant: at least one crew-permissible and one impostor-permissible prompt per pair.
 
 ## 8. Security Log
 - Dependencies introduced:
@@ -139,6 +148,13 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - `src/server/realtime/lobby-event-bus.test.ts`
 - Command route tests now bootstrap lobbies through create/join APIs (no demo-seed dependency).
 - Latest result: `33` tests passing.
+- Added question-pair route tests:
+- `src/app/api/question-pairs/route.test.ts`
+- coverage includes create/list/delete and invariant rejection.
+- Added auto-round orchestration coverage:
+- `src/application/game-session-service.test.ts` (`startRoundAuto`)
+- `src/app/api/games/[lobbyId]/commands/route.test.ts` (`start_round_auto`)
+- Latest result: `37` tests passing.
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -162,3 +178,5 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Host pause-extension behavior is implemented for host-disconnect pause flow.
 - Session identity is now required for create/join/command actions (host checks enforced for host-only commands).
 - UI round-start defaults now derive role assignment from active lobby state instead of hardcoded player IDs.
+- Data model migration still required to move question pairs from fixed fields (`canonicalQuestion`, `impostorQuestion`) to prompt-target representation with validation invariant for crew/impostor permissibility.
+- UI now supports question-pair CRUD and host `start_round_auto`; presentation and role-specific prompt rendering are still prototype-level and need round-view polish.

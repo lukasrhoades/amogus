@@ -1,4 +1,4 @@
-import { GameState } from "../domain/game/types";
+import { GameState, QuestionPair, Role } from "../domain/game/types";
 
 export type SerializedGameState = {
   lobbyId: string;
@@ -24,9 +24,48 @@ export type SerializedGameState = {
     votesCount: number;
     eliminatedPlayerId: string | null;
   };
+  viewerRound: null | {
+    viewerPlayerId: string;
+    isActive: boolean;
+    role: "impostor" | "crew" | null;
+    prompts: string[];
+  };
 };
 
-export function serializeGameState(state: GameState): SerializedGameState {
+function promptsForRole(
+  pair: QuestionPair,
+  role: Role,
+): string[] {
+  const prompts = [pair.promptA, pair.promptB];
+  return prompts
+    .filter((prompt) => prompt.target === "both" || prompt.target === role)
+    .map((prompt) => prompt.text);
+}
+
+export function serializeGameState(state: GameState, viewerPlayerId?: string): SerializedGameState {
+  const viewer = viewerPlayerId === undefined ? undefined : state.players[viewerPlayerId];
+  const viewerRound =
+    viewer === undefined || state.currentRound === null
+      ? null
+      : (() => {
+          const role = state.currentRound.roles[viewer.id] ?? null;
+          if (role === null) {
+            return {
+              viewerPlayerId: viewer.id,
+              isActive: false,
+              role: null,
+              prompts: [] as string[],
+            };
+          }
+
+          return {
+            viewerPlayerId: viewer.id,
+            isActive: true,
+            role,
+            prompts: promptsForRole(state.currentRound.selectedQuestionPair, role),
+          };
+        })();
+
   return {
     lobbyId: state.lobbyId,
     status: state.status,
@@ -54,5 +93,6 @@ export function serializeGameState(state: GameState): SerializedGameState {
             votesCount: Object.keys(state.currentRound.votes).length,
             eliminatedPlayerId: state.currentRound.eliminatedPlayerId,
           },
+    viewerRound,
   };
 }

@@ -56,11 +56,18 @@ export type Player = {
   connected: boolean;
 };
 
+export type QuestionPromptTarget = "crew" | "impostor" | "both";
+
+export type QuestionPrompt = {
+  text: string;
+  target: QuestionPromptTarget;
+};
+
 export type QuestionPair = {
   id: QuestionPairId;
   ownerId: PlayerId;
-  canonicalQuestion: string;
-  impostorQuestion: string;
+  promptA: QuestionPrompt;
+  promptB: QuestionPrompt;
 };
 
 export type ScoreboardEntry = {

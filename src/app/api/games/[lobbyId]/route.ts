@@ -4,13 +4,14 @@ import { z } from "zod";
 
 import { getRuntime } from "../../../../server/runtime";
 import { serializeGameState } from "../../../../server/serialize-game-state";
+import { readSessionFromRequest } from "../../../../server/session/session";
 
 const paramsSchema = z.object({
   lobbyId: z.string().min(1),
 });
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ lobbyId: string }> },
 ) {
   const params = paramsSchema.safeParse(await context.params);
@@ -36,5 +37,6 @@ export async function GET(
     );
   }
 
-  return NextResponse.json(serializeGameState(state.value));
+  const session = readSessionFromRequest(request);
+  return NextResponse.json(serializeGameState(state.value, session?.playerId));
 }
