@@ -6,6 +6,22 @@ export type SerializedGameState = {
   phase: string;
   completedRounds: number;
   plannedRounds: number;
+  settings: {
+    plannedRounds: number;
+    roundsCappedByQuestions: boolean;
+    questionReuseEnabled: boolean;
+    impostorWeights: {
+      zero: number;
+      one: number;
+      two: number;
+    };
+    scoring: {
+      impostorSurvivesPoints: number;
+      crewVotesOutImpostorPoints: number;
+      crewVotedOutPenaltyEnabled: boolean;
+      crewVotedOutPenaltyPoints: number;
+    };
+  };
   players: Array<{
     id: string;
     displayName: string;
@@ -111,6 +127,22 @@ export function serializeGameState(state: GameState, viewerPlayerId?: string): S
     phase: state.phase,
     completedRounds: state.completedRounds,
     plannedRounds: state.settings.plannedRounds,
+    settings: {
+      plannedRounds: state.settings.plannedRounds,
+      roundsCappedByQuestions: state.settings.roundsCappedByQuestions,
+      questionReuseEnabled: state.settings.questionReuseEnabled,
+      impostorWeights: {
+        zero: state.settings.impostorWeights.zero,
+        one: state.settings.impostorWeights.one,
+        two: state.settings.impostorWeights.two,
+      },
+      scoring: {
+        impostorSurvivesPoints: state.settings.scoring.impostorSurvivesPoints,
+        crewVotesOutImpostorPoints: state.settings.scoring.crewVotesOutImpostorPoints,
+        crewVotedOutPenaltyEnabled: state.settings.scoring.crewVotedOutPenaltyEnabled,
+        crewVotedOutPenaltyPoints: state.settings.scoring.crewVotedOutPenaltyPoints,
+      },
+    },
     players: Object.values(state.players).map((player) => ({
       id: player.id,
       displayName: player.displayName,

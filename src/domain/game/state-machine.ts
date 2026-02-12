@@ -30,6 +30,23 @@ type CloseVotingInput = {
   tieBreakLoserId?: PlayerId;
 };
 
+type UpdateSettingsInput = {
+  plannedRounds: number;
+  roundsCappedByQuestions: boolean;
+  questionReuseEnabled: boolean;
+  impostorWeights: {
+    zero: number;
+    one: number;
+    two: number;
+  };
+  scoring: {
+    impostorSurvivesPoints: number;
+    crewVotesOutImpostorPoints: number;
+    crewVotedOutPenaltyEnabled: boolean;
+    crewVotedOutPenaltyPoints: number;
+  };
+};
+
 function ok<T>(value: T): Result<T> {
   return { ok: true, value };
 }
@@ -53,6 +70,7 @@ function createError(
     | "missing_tiebreak"
     | "invalid_role_assignment"
     | "invalid_round"
+    | "invalid_settings"
     | "game_over"
     | "host_not_disconnected"
     | "invalid_host_transfer_vote"
@@ -198,6 +216,71 @@ export function startRound(state: GameState, input: StartRoundInput): Result<Gam
     phase: "prompting",
     currentRound: nextRound,
     usedQuestionPairIds: nextUsedQuestionIds,
+  });
+}
+
+function validProbability(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function validScoreValue(value: number): boolean {
+  return Number.isFinite(value) && Number.isInteger(value);
+}
+
+export function updateSettings(state: GameState, input: UpdateSettingsInput): Result<GameState> {
+  if (state.phase !== "setup" && state.phase !== "round_result") {
+    return err("invalid_phase", "Settings can only be updated between rounds");
+  }
+  if (!Number.isInteger(input.plannedRounds) || input.plannedRounds < 5 || input.plannedRounds > 30) {
+    return err("invalid_settings", "plannedRounds must be an integer between 5 and 30");
+  }
+  if (input.plannedRounds < state.completedRounds) {
+    return err("invalid_settings", "plannedRounds cannot be less than completed rounds");
+  }
+  if (
+    !validProbability(input.impostorWeights.zero) ||
+    !validProbability(input.impostorWeights.one) ||
+    !validProbability(input.impostorWeights.two)
+  ) {
+    return err("invalid_settings", "All impostor weights must be probabilities between 0 and 1");
+  }
+  const weightSum = input.impostorWeights.zero + input.impostorWeights.one + input.impostorWeights.two;
+  if (Math.abs(weightSum - 1) > 0.000001) {
+    return err("invalid_settings", "Impostor weights must sum to 1");
+  }
+  if (
+    !validScoreValue(input.scoring.impostorSurvivesPoints) ||
+    !validScoreValue(input.scoring.crewVotesOutImpostorPoints) ||
+    !validScoreValue(input.scoring.crewVotedOutPenaltyPoints)
+  ) {
+    return err("invalid_settings", "Scoring values must be integers");
+  }
+  if (input.scoring.impostorSurvivesPoints < 0 || input.scoring.crewVotesOutImpostorPoints < 0) {
+    return err("invalid_settings", "Positive scoring values cannot be negative");
+  }
+  if (input.scoring.crewVotedOutPenaltyPoints > 0) {
+    return err("invalid_settings", "Crew voted-out penalty must be zero or negative");
+  }
+
+  return ok({
+    ...state,
+    settings: {
+      ...state.settings,
+      plannedRounds: input.plannedRounds,
+      roundsCappedByQuestions: input.roundsCappedByQuestions,
+      questionReuseEnabled: input.questionReuseEnabled,
+      impostorWeights: {
+        zero: input.impostorWeights.zero,
+        one: input.impostorWeights.one,
+        two: input.impostorWeights.two,
+      },
+      scoring: {
+        impostorSurvivesPoints: input.scoring.impostorSurvivesPoints,
+        crewVotesOutImpostorPoints: input.scoring.crewVotesOutImpostorPoints,
+        crewVotedOutPenaltyEnabled: input.scoring.crewVotedOutPenaltyEnabled,
+        crewVotedOutPenaltyPoints: input.scoring.crewVotedOutPenaltyPoints,
+      },
+    },
   });
 }
 

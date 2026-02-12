@@ -225,4 +225,32 @@ describe("GameSessionService", () => {
     const deleted = await service.cleanupIdleLobbies({ nowMs: now });
     expect(deleted).toBe(1);
   });
+
+  it("updates lobby settings between rounds", async () => {
+    const service = new GameSessionService(new InMemoryGameSessionRepo());
+    const initial = createInitialGameState({
+      lobbyId: "l5",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+    await service.create(initial);
+
+    const updated = await service.updateSettings("l5", {
+      plannedRounds: 12,
+      roundsCappedByQuestions: true,
+      questionReuseEnabled: true,
+      impostorWeights: { zero: 0.1, one: 0.8, two: 0.1 },
+      scoring: {
+        impostorSurvivesPoints: 4,
+        crewVotesOutImpostorPoints: 2,
+        crewVotedOutPenaltyEnabled: false,
+        crewVotedOutPenaltyPoints: -1,
+      },
+    });
+
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.value.settings.plannedRounds).toBe(12);
+    expect(updated.value.settings.questionReuseEnabled).toBe(true);
+  });
 });

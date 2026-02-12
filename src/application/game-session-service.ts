@@ -26,6 +26,7 @@ import {
   extendHostDisconnectPause,
   startDiscussion,
   startRound,
+  updateSettings,
   submitAnswer,
 } from "../domain/game/state-machine";
 import { GameSessionRepo } from "../ports/game-session-repo";
@@ -505,6 +506,35 @@ export class GameSessionService {
     }
 
     const next = removePlayer(stateResult.value, playerId);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+
+    await this.saveAndNotify(next.value);
+    return ok(next.value);
+  }
+
+  async updateSettings(
+    lobbyId: LobbyId,
+    input: {
+      plannedRounds: number;
+      roundsCappedByQuestions: boolean;
+      questionReuseEnabled: boolean;
+      impostorWeights: { zero: number; one: number; two: number };
+      scoring: {
+        impostorSurvivesPoints: number;
+        crewVotesOutImpostorPoints: number;
+        crewVotedOutPenaltyEnabled: boolean;
+        crewVotedOutPenaltyPoints: number;
+      };
+    },
+  ): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+
+    const next = updateSettings(stateResult.value, input);
     if (!next.ok) {
       return fromDomain(next);
     }

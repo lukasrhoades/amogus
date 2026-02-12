@@ -136,6 +136,7 @@ export type TransitionErrorCode =
   | "missing_tiebreak"
   | "invalid_role_assignment"
   | "invalid_round"
+  | "invalid_settings"
   | "game_over"
   | "host_not_disconnected"
   | "invalid_host_transfer_vote"

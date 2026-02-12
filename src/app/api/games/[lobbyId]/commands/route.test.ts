@@ -349,4 +349,43 @@ describe("game command route", () => {
     expect(closeVotingJson.error).toBe("missing_tiebreak");
     expect(closeVotingJson.tieCandidates?.slice().sort()).toEqual(["p2", "p3"]);
   });
+
+  it("allows host to update game settings between rounds", async () => {
+    await setupLobby("demo-lobby");
+    const hostCookie = await authCookieFor(hostUser);
+
+    const updated = await postCommand(
+      "demo-lobby",
+      {
+        type: "update_settings",
+        payload: {
+          plannedRounds: 12,
+          roundsCappedByQuestions: true,
+          questionReuseEnabled: true,
+          impostorWeights: { zero: 0.1, one: 0.8, two: 0.1 },
+          scoring: {
+            impostorSurvivesPoints: 4,
+            crewVotesOutImpostorPoints: 2,
+            crewVotedOutPenaltyEnabled: false,
+            crewVotedOutPenaltyPoints: -1,
+          },
+        },
+      },
+      hostCookie,
+    );
+    const updatedJson = (await updated.json()) as {
+      state: {
+        plannedRounds: number;
+        settings: {
+          questionReuseEnabled: boolean;
+          impostorWeights: { one: number };
+        };
+      };
+    };
+
+    expect(updated.status).toBe(200);
+    expect(updatedJson.state.plannedRounds).toBe(12);
+    expect(updatedJson.state.settings.questionReuseEnabled).toBe(true);
+    expect(updatedJson.state.settings.impostorWeights.one).toBe(0.8);
+  });
 });

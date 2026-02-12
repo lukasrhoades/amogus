@@ -13,6 +13,22 @@ type LobbySnapshot = {
   phase: string;
   completedRounds: number;
   plannedRounds: number;
+  settings: {
+    plannedRounds: number;
+    roundsCappedByQuestions: boolean;
+    questionReuseEnabled: boolean;
+    impostorWeights: {
+      zero: number;
+      one: number;
+      two: number;
+    };
+    scoring: {
+      impostorSurvivesPoints: number;
+      crewVotesOutImpostorPoints: number;
+      crewVotedOutPenaltyEnabled: boolean;
+      crewVotedOutPenaltyPoints: number;
+    };
+  };
   players: Array<{
     id: string;
     displayName: string;
@@ -79,6 +95,25 @@ type CommandPayload =
   | { type: "cast_vote"; payload: { targetId: string } }
   | { type: "close_voting"; payload: { allowMissingVotes: boolean; tieBreakLoserId?: string } }
   | { type: "finalize_round"; payload: Record<string, never> }
+  | {
+      type: "update_settings";
+      payload: {
+        plannedRounds: number;
+        roundsCappedByQuestions: boolean;
+        questionReuseEnabled: boolean;
+        impostorWeights: {
+          zero: number;
+          one: number;
+          two: number;
+        };
+        scoring: {
+          impostorSurvivesPoints: number;
+          crewVotesOutImpostorPoints: number;
+          crewVotedOutPenaltyEnabled: boolean;
+          crewVotedOutPenaltyPoints: number;
+        };
+      };
+    }
   | { type: "remove_player"; payload: { playerId: string } }
   | { type: "leave_lobby"; payload: Record<string, never> };
 
@@ -107,6 +142,17 @@ export default function HomePage() {
     }>
   >([]);
   const [tieCandidates, setTieCandidates] = useState<string[]>([]);
+  const [settingsPlannedRounds, setSettingsPlannedRounds] = useState<number>(10);
+  const [settingsRoundsCappedByQuestions, setSettingsRoundsCappedByQuestions] = useState<boolean>(false);
+  const [settingsQuestionReuseEnabled, setSettingsQuestionReuseEnabled] = useState<boolean>(false);
+  const [settingsZeroWeight, setSettingsZeroWeight] = useState<number>(0.025);
+  const [settingsOneWeight, setSettingsOneWeight] = useState<number>(0.95);
+  const [settingsTwoWeight, setSettingsTwoWeight] = useState<number>(0.025);
+  const [settingsImpostorSurvivePoints, setSettingsImpostorSurvivePoints] = useState<number>(3);
+  const [settingsCrewCatchPoints, setSettingsCrewCatchPoints] = useState<number>(1);
+  const [settingsPenaltyEnabled, setSettingsPenaltyEnabled] = useState<boolean>(true);
+  const [settingsPenaltyPoints, setSettingsPenaltyPoints] = useState<number>(-1);
+  const [roundEligibilityEnabled, setRoundEligibilityEnabled] = useState<boolean>(true);
 
   useEffect(() => {
     const run = async () => {
@@ -300,7 +346,14 @@ export default function HomePage() {
   }
 
   async function startAutoRound() {
-    await runCommand({ type: "start_round_auto", payload: {} });
+    await runCommand({
+      type: "start_round_auto",
+      payload: {
+        roundPolicy: {
+          eligibilityEnabled: roundEligibilityEnabled,
+        },
+      },
+    });
   }
 
   async function loadQuestionPairs() {
@@ -395,6 +448,49 @@ export default function HomePage() {
     setRemovePlayerId(removablePlayers[0]?.id ?? "");
   }, [removePlayerId, removablePlayers]);
 
+  useEffect(() => {
+    if (snapshot === null) {
+      return;
+    }
+    setSettingsPlannedRounds(snapshot.settings.plannedRounds);
+    setSettingsRoundsCappedByQuestions(snapshot.settings.roundsCappedByQuestions);
+    setSettingsQuestionReuseEnabled(snapshot.settings.questionReuseEnabled);
+    setSettingsZeroWeight(snapshot.settings.impostorWeights.zero);
+    setSettingsOneWeight(snapshot.settings.impostorWeights.one);
+    setSettingsTwoWeight(snapshot.settings.impostorWeights.two);
+    setSettingsImpostorSurvivePoints(snapshot.settings.scoring.impostorSurvivesPoints);
+    setSettingsCrewCatchPoints(snapshot.settings.scoring.crewVotesOutImpostorPoints);
+    setSettingsPenaltyEnabled(snapshot.settings.scoring.crewVotedOutPenaltyEnabled);
+    setSettingsPenaltyPoints(snapshot.settings.scoring.crewVotedOutPenaltyPoints);
+    setRoundEligibilityEnabled(snapshot.players.length >= 5);
+  }, [snapshot]);
+
+  function impostorWeightPercent(value: number): string {
+    return `${(value * 100).toFixed(1)}%`;
+  }
+
+  async function saveSettings() {
+    await runCommand({
+      type: "update_settings",
+      payload: {
+        plannedRounds: settingsPlannedRounds,
+        roundsCappedByQuestions: settingsRoundsCappedByQuestions,
+        questionReuseEnabled: settingsQuestionReuseEnabled,
+        impostorWeights: {
+          zero: settingsZeroWeight,
+          one: settingsOneWeight,
+          two: settingsTwoWeight,
+        },
+        scoring: {
+          impostorSurvivesPoints: settingsImpostorSurvivePoints,
+          crewVotesOutImpostorPoints: settingsCrewCatchPoints,
+          crewVotedOutPenaltyEnabled: settingsPenaltyEnabled,
+          crewVotedOutPenaltyPoints: settingsPenaltyPoints,
+        },
+      },
+    });
+  }
+
   return (
     <main>
       <div className="container">
@@ -483,6 +579,119 @@ export default function HomePage() {
               Remove
             </button>
           </p>
+        ) : null}
+        {isHost && (snapshot?.phase === "setup" || snapshot?.phase === "round_result") ? (
+          <div>
+            <h3>Host Settings</h3>
+            <p>
+              Planned rounds (5-30):{" "}
+              <input
+                type="number"
+                min={5}
+                max={30}
+                value={settingsPlannedRounds}
+                onChange={(e) => setSettingsPlannedRounds(Number(e.target.value))}
+              />
+            </p>
+            <p>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={settingsRoundsCappedByQuestions}
+                  onChange={(e) => setSettingsRoundsCappedByQuestions(e.target.checked)}
+                />{" "}
+                Cap rounds by question pool size
+              </label>
+            </p>
+            <p>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={settingsQuestionReuseEnabled}
+                  onChange={(e) => setSettingsQuestionReuseEnabled(e.target.checked)}
+                />{" "}
+                Allow question reuse in game
+              </label>
+            </p>
+            <p>
+              Impostor weights: 0={impostorWeightPercent(settingsZeroWeight)} 1=
+              {impostorWeightPercent(settingsOneWeight)} 2={impostorWeightPercent(settingsTwoWeight)}
+            </p>
+            <p>
+              0 impostor:{" "}
+              <input
+                type="number"
+                step="0.001"
+                min={0}
+                max={1}
+                value={settingsZeroWeight}
+                onChange={(e) => setSettingsZeroWeight(Number(e.target.value))}
+              />{" "}
+              1 impostor:{" "}
+              <input
+                type="number"
+                step="0.001"
+                min={0}
+                max={1}
+                value={settingsOneWeight}
+                onChange={(e) => setSettingsOneWeight(Number(e.target.value))}
+              />{" "}
+              2 impostor:{" "}
+              <input
+                type="number"
+                step="0.001"
+                min={0}
+                max={1}
+                value={settingsTwoWeight}
+                onChange={(e) => setSettingsTwoWeight(Number(e.target.value))}
+              />
+            </p>
+            <p>
+              Scoring: impostor survives{" "}
+              <input
+                type="number"
+                value={settingsImpostorSurvivePoints}
+                onChange={(e) => setSettingsImpostorSurvivePoints(Number(e.target.value))}
+              />{" "}
+              crew catches impostor{" "}
+              <input
+                type="number"
+                value={settingsCrewCatchPoints}
+                onChange={(e) => setSettingsCrewCatchPoints(Number(e.target.value))}
+              />
+            </p>
+            <p>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={settingsPenaltyEnabled}
+                  onChange={(e) => setSettingsPenaltyEnabled(e.target.checked)}
+                />{" "}
+                Enable voted-out crew penalty
+              </label>{" "}
+              penalty points{" "}
+              <input
+                type="number"
+                value={settingsPenaltyPoints}
+                onChange={(e) => setSettingsPenaltyPoints(Number(e.target.value))}
+              />
+            </p>
+            <p>
+              Round eligibility (for next auto-start round):{" "}
+              <select
+                value={roundEligibilityEnabled ? "on" : "off"}
+                onChange={(e) => setRoundEligibilityEnabled(e.target.value === "on")}
+              >
+                <option value="on">ON</option>
+                <option value="off">OFF</option>
+              </select>
+            </p>
+            <p>
+              <button type="button" onClick={saveSettings}>
+                Save Settings
+              </button>
+            </p>
+          </div>
         ) : null}
 
         <h2>Round</h2>

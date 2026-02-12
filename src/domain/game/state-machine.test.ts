@@ -14,6 +14,7 @@ import {
   revealQuestion,
   startDiscussion,
   startRound,
+  updateSettings,
   extendHostDisconnectPause,
   removePlayer,
   setPlayerConnection,
@@ -642,5 +643,59 @@ describe("cancel-round and round cap behavior", () => {
     if (!canceled.ok) return;
 
     expect(canceled.value.settings.plannedRounds).toBe(6);
+  });
+});
+
+describe("settings updates", () => {
+  it("updates settings between rounds", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const updated = updateSettings(base, {
+      plannedRounds: 12,
+      roundsCappedByQuestions: true,
+      questionReuseEnabled: true,
+      impostorWeights: { zero: 0.1, one: 0.8, two: 0.1 },
+      scoring: {
+        impostorSurvivesPoints: 4,
+        crewVotesOutImpostorPoints: 2,
+        crewVotedOutPenaltyEnabled: false,
+        crewVotedOutPenaltyPoints: -1,
+      },
+    });
+
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.value.settings.plannedRounds).toBe(12);
+    expect(updated.value.settings.questionReuseEnabled).toBe(true);
+    expect(updated.value.settings.impostorWeights.one).toBe(0.8);
+  });
+
+  it("rejects invalid weight sums", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const updated = updateSettings(base, {
+      plannedRounds: 10,
+      roundsCappedByQuestions: false,
+      questionReuseEnabled: false,
+      impostorWeights: { zero: 0.1, one: 0.8, two: 0.2 },
+      scoring: {
+        impostorSurvivesPoints: 3,
+        crewVotesOutImpostorPoints: 1,
+        crewVotedOutPenaltyEnabled: true,
+        crewVotedOutPenaltyPoints: -1,
+      },
+    });
+
+    expect(updated.ok).toBe(false);
+    if (updated.ok) return;
+    expect(updated.error.code).toBe("invalid_settings");
   });
 });

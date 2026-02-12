@@ -12,6 +12,22 @@ const paramsSchema = z.object({
 
 const roleAssignmentSchema = z.record(z.string().min(1), z.enum(["impostor", "crew"]));
 const promptTargetSchema = z.union([z.literal("crew"), z.literal("impostor"), z.literal("both")]);
+const gameSettingsUpdateSchema = z.object({
+  plannedRounds: z.number().int().min(5).max(30),
+  roundsCappedByQuestions: z.boolean(),
+  questionReuseEnabled: z.boolean(),
+  impostorWeights: z.object({
+    zero: z.number().min(0).max(1),
+    one: z.number().min(0).max(1),
+    two: z.number().min(0).max(1),
+  }),
+  scoring: z.object({
+    impostorSurvivesPoints: z.number().int().min(0),
+    crewVotesOutImpostorPoints: z.number().int().min(0),
+    crewVotedOutPenaltyEnabled: z.boolean(),
+    crewVotedOutPenaltyPoints: z.number().int().max(0),
+  }),
+});
 
 const commandSchema = z.discriminatedUnion("type", [
   z.object({
@@ -92,6 +108,10 @@ const commandSchema = z.discriminatedUnion("type", [
     payload: z.object({}),
   }),
   z.object({
+    type: z.literal("update_settings"),
+    payload: gameSettingsUpdateSchema,
+  }),
+  z.object({
     type: z.literal("cancel_round"),
     payload: z.object({
       reason: z.union([
@@ -150,6 +170,9 @@ function domainErrorStatus(code: string): number {
   if (code === "invalid_phase" || code === "invalid_role_assignment" || code === "invalid_round") {
     return 409;
   }
+  if (code === "invalid_settings") {
+    return 400;
+  }
 
   if (code === "missing_answers" || code === "missing_votes" || code === "missing_tiebreak") {
     return 400;
@@ -175,6 +198,7 @@ function isHostOnlyCommand(commandType: Command["type"]): boolean {
     commandType === "end_discussion" ||
     commandType === "close_voting" ||
     commandType === "finalize_round" ||
+    commandType === "update_settings" ||
     commandType === "cancel_round" ||
     commandType === "remove_player"
   );
@@ -231,6 +255,8 @@ async function runCommand(lobbyId: string, command: Command, sessionPlayerId: st
     }
     case "finalize_round":
       return service.finalizeRound(lobbyId);
+    case "update_settings":
+      return service.updateSettings(lobbyId, command.payload);
     case "cancel_round":
       return service.cancelCurrentRoundBeforeReveal(lobbyId, command.payload.reason);
     case "set_player_connection":
