@@ -17,6 +17,7 @@ import {
 } from "./types";
 
 const MIN_ACTIVE_PLAYERS = 4;
+const HOST_RECONNECT_TIMEOUT_MS = 5 * 60 * 1000;
 
 type StartRoundInput = {
   selection: RoundSelection;
@@ -52,7 +53,9 @@ function createError(
     | "missing_tiebreak"
     | "invalid_role_assignment"
     | "invalid_round"
-    | "game_over",
+    | "game_over"
+    | "host_not_disconnected"
+    | "invalid_host_transfer_vote",
   message: string,
 ) {
   return { code, message };
@@ -90,7 +93,17 @@ export function createInitialGameState(input: {
     scoreboard: createInitialScoreboard(input.players),
     completedRounds: 0,
     currentRound: null,
+    hostDisconnection: null,
   };
+}
+
+function getHostId(state: GameState): PlayerId | null {
+  const host = Object.values(state.players).find((player) => player.isHost);
+  return host?.id ?? null;
+}
+
+function ensureNonPausedStatus(status: GameState["status"]): Exclude<GameState["status"], "paused"> {
+  return status === "paused" ? "in_progress" : status;
 }
 
 function isRoundTerminal(phase: GamePhase): boolean {
@@ -601,13 +614,14 @@ export function setPlayerConnection(
   state: GameState,
   playerId: PlayerId,
   connected: boolean,
+  nowMs: number,
 ): Result<GameState> {
   const player = state.players[playerId];
   if (player === undefined) {
     return err("invalid_round", `Player ${playerId} does not exist`);
   }
 
-  return ok({
+  const nextState: GameState = {
     ...state,
     players: {
       ...state.players,
@@ -616,5 +630,126 @@ export function setPlayerConnection(
         connected,
       },
     },
+  };
+
+  if (!player.isHost) {
+    return ok(nextState);
+  }
+
+  if (!connected) {
+    return ok({
+      ...nextState,
+      status: "paused",
+      hostDisconnection: {
+        disconnectedAtMs: nowMs,
+        deadlineMs: nowMs + HOST_RECONNECT_TIMEOUT_MS,
+        statusBeforePause: ensureNonPausedStatus(state.status),
+        transferVotes: {},
+      },
+    });
+  }
+
+  const restoredStatus =
+    state.phase === "game_over"
+      ? "ended"
+      : state.hostDisconnection?.statusBeforePause ?? ensureNonPausedStatus(state.status);
+
+  return ok({
+    ...nextState,
+    status: restoredStatus,
+    hostDisconnection: null,
+  });
+}
+
+export function castHostTransferVote(
+  state: GameState,
+  voterId: PlayerId,
+  newHostId: PlayerId,
+): Result<GameState> {
+  const hostDisconnection = state.hostDisconnection;
+  if (hostDisconnection === null) {
+    return err("host_not_disconnected", "Host transfer vote requires disconnected host");
+  }
+
+  const currentHostId = getHostId(state);
+  if (currentHostId === null) {
+    return err("invalid_round", "No host is present in lobby state");
+  }
+
+  const voter = state.players[voterId];
+  const newHost = state.players[newHostId];
+  if (voter === undefined || newHost === undefined) {
+    return err("invalid_host_transfer_vote", "Voter or proposed host does not exist");
+  }
+
+  if (voter.isHost || !voter.connected) {
+    return err("invalid_host_transfer_vote", "Only connected non-host players can vote host transfer");
+  }
+
+  if (newHost.isHost || !newHost.connected) {
+    return err("invalid_host_transfer_vote", "Proposed host must be a connected non-host player");
+  }
+
+  const nextVotes = {
+    ...hostDisconnection.transferVotes,
+    [voterId]: newHostId,
+  };
+
+  const requiredVoters = Object.values(state.players)
+    .filter((player) => !player.isHost && player.connected)
+    .map((player) => player.id);
+
+  const isUnanimous = requiredVoters.length > 0 && requiredVoters.every((id) => nextVotes[id] === newHostId);
+  if (!isUnanimous) {
+    return ok({
+      ...state,
+      hostDisconnection: {
+        ...hostDisconnection,
+        transferVotes: nextVotes,
+      },
+    });
+  }
+
+  return ok({
+    ...state,
+    status: hostDisconnection.statusBeforePause,
+    hostDisconnection: null,
+    players: Object.fromEntries(
+      Object.entries(state.players).map(([id, player]) => {
+        if (id === currentHostId) {
+          return [id, { ...player, isHost: false }];
+        }
+        if (id === newHostId) {
+          return [id, { ...player, isHost: true }];
+        }
+        return [id, player];
+      }),
+    ),
+  });
+}
+
+export function applyHostDisconnectTimeout(
+  state: GameState,
+  nowMs: number,
+): Result<GameState> {
+  const hostDisconnection = state.hostDisconnection;
+  if (hostDisconnection === null) {
+    return err("host_not_disconnected", "No disconnected host timeout to apply");
+  }
+
+  if (nowMs < hostDisconnection.deadlineMs) {
+    return ok(state);
+  }
+
+  const connectedPlayers = Object.values(state.players).filter((player) => player.connected).length;
+  if (connectedPlayers >= MIN_ACTIVE_PLAYERS) {
+    return ok(state);
+  }
+
+  return ok({
+    ...state,
+    status: "ended",
+    phase: "game_over",
+    currentRound: null,
   });
 }

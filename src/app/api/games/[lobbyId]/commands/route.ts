@@ -83,6 +83,20 @@ const commandSchema = z.discriminatedUnion("type", [
     payload: z.object({
       playerId: z.string().min(1),
       connected: z.boolean(),
+      nowMs: z.number().int().nonnegative().optional(),
+    }),
+  }),
+  z.object({
+    type: z.literal("cast_host_transfer_vote"),
+    payload: z.object({
+      voterId: z.string().min(1),
+      newHostId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    type: z.literal("apply_host_disconnect_timeout"),
+    payload: z.object({
+      nowMs: z.number().int().nonnegative().optional(),
     }),
   }),
 ]);
@@ -141,7 +155,16 @@ async function runCommand(lobbyId: string, command: Command) {
     case "cancel_round":
       return service.cancelCurrentRoundBeforeReveal(lobbyId, command.payload.reason);
     case "set_player_connection":
-      return service.setPlayerConnection(lobbyId, command.payload.playerId, command.payload.connected);
+      return service.setPlayerConnection(
+        lobbyId,
+        command.payload.playerId,
+        command.payload.connected,
+        command.payload.nowMs,
+      );
+    case "cast_host_transfer_vote":
+      return service.castHostTransferVote(lobbyId, command.payload.voterId, command.payload.newHostId);
+    case "apply_host_disconnect_timeout":
+      return service.applyHostDisconnectTimeout(lobbyId, command.payload.nowMs);
     default: {
       const exhausted: never = command;
       return exhausted;

@@ -10,6 +10,8 @@ import {
   RoundPolicy,
 } from "../domain/game/types";
 import {
+  applyHostDisconnectTimeout,
+  castHostTransferVote,
   cancelCurrentRoundBeforeReveal,
   castVote,
   closeVotingAndResolve,
@@ -224,13 +226,51 @@ export class GameSessionService {
     lobbyId: LobbyId,
     playerId: PlayerId,
     connected: boolean,
+    nowMs: number = Date.now(),
   ): Promise<ServiceResult<GameState>> {
     const stateResult = await this.get(lobbyId);
     if (!stateResult.ok) {
       return stateResult;
     }
 
-    const next = setPlayerConnection(stateResult.value, playerId, connected);
+    const next = setPlayerConnection(stateResult.value, playerId, connected, nowMs);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+
+    await this.repo.save(next.value);
+    return ok(next.value);
+  }
+
+  async castHostTransferVote(
+    lobbyId: LobbyId,
+    voterId: PlayerId,
+    newHostId: PlayerId,
+  ): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+
+    const next = castHostTransferVote(stateResult.value, voterId, newHostId);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+
+    await this.repo.save(next.value);
+    return ok(next.value);
+  }
+
+  async applyHostDisconnectTimeout(
+    lobbyId: LobbyId,
+    nowMs: number = Date.now(),
+  ): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+
+    const next = applyHostDisconnectTimeout(stateResult.value, nowMs);
     if (!next.ok) {
       return fromDomain(next);
     }

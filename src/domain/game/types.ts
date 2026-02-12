@@ -93,6 +93,13 @@ export type RoundState = {
 
 export type GameStatus = "waiting" | "in_progress" | "paused" | "ended";
 
+export type HostDisconnectionState = {
+  disconnectedAtMs: number;
+  deadlineMs: number;
+  statusBeforePause: Exclude<GameStatus, "paused">;
+  transferVotes: Partial<Record<PlayerId, PlayerId>>;
+};
+
 export type GameState = {
   lobbyId: LobbyId;
   status: GameStatus;
@@ -103,6 +110,7 @@ export type GameState = {
   scoreboard: Scoreboard;
   completedRounds: number;
   currentRound: RoundState | null;
+  hostDisconnection: HostDisconnectionState | null;
 };
 
 export type TransitionErrorCode =
@@ -119,7 +127,9 @@ export type TransitionErrorCode =
   | "missing_tiebreak"
   | "invalid_role_assignment"
   | "invalid_round"
-  | "game_over";
+  | "game_over"
+  | "host_not_disconnected"
+  | "invalid_host_transfer_vote";
 
 export type TransitionError = {
   code: TransitionErrorCode;

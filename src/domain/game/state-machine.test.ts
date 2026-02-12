@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyHostDisconnectTimeout,
+  castHostTransferVote,
   cancelCurrentRoundBeforeReveal,
   castVote,
   closeVotingAndResolve,
@@ -11,6 +13,7 @@ import {
   revealQuestion,
   startDiscussion,
   startRound,
+  setPlayerConnection,
   submitAnswer,
 } from "./state-machine";
 import { GameSettings, Player, PlayerId, QuestionPair, RoundRoleAssignment } from "./types";
@@ -461,6 +464,73 @@ describe("winner selection", () => {
     if (!resolved.ok) return;
     expect(resolved.value.winnerPlayerIds).toEqual(["p2"]);
     expect(resolved.value.reason).toBe("random_tiebreak");
+  });
+});
+
+describe("host disconnect rules", () => {
+  it("pauses game when host disconnects and resumes when host reconnects", () => {
+    const state = createInitialGameState({
+      lobbyId: "l1",
+      players: players(5),
+      settings: defaultSettings(),
+    });
+
+    const disconnected = setPlayerConnection(state, "p1", false, 1000);
+    expect(disconnected.ok).toBe(true);
+    if (!disconnected.ok) return;
+    expect(disconnected.value.status).toBe("paused");
+    expect(disconnected.value.hostDisconnection).not.toBeNull();
+    expect(disconnected.value.hostDisconnection?.deadlineMs).toBe(301000);
+
+    const reconnected = setPlayerConnection(disconnected.value, "p1", true, 2000);
+    expect(reconnected.ok).toBe(true);
+    if (!reconnected.ok) return;
+    expect(reconnected.value.status).toBe("waiting");
+    expect(reconnected.value.hostDisconnection).toBeNull();
+  });
+
+  it("transfers host only after unanimous connected non-host votes", () => {
+    const state = createInitialGameState({
+      lobbyId: "l1",
+      players: players(5),
+      settings: defaultSettings(),
+    });
+
+    const disconnected = expectOk(setPlayerConnection(state, "p1", false, 1000));
+    const firstVote = castHostTransferVote(disconnected, "p2", "p3");
+    expect(firstVote.ok).toBe(true);
+    if (!firstVote.ok) return;
+    expect(firstVote.value.players.p1?.isHost).toBe(true);
+
+    const secondVote = expectOk(castHostTransferVote(firstVote.value, "p3", "p3"));
+    const thirdVote = expectOk(castHostTransferVote(secondVote, "p4", "p3"));
+    const fourthVote = castHostTransferVote(thirdVote, "p5", "p3");
+    expect(fourthVote.ok).toBe(true);
+    if (!fourthVote.ok) return;
+
+    expect(fourthVote.value.players.p1?.isHost).toBe(false);
+    expect(fourthVote.value.players.p3?.isHost).toBe(true);
+    expect(fourthVote.value.hostDisconnection).toBeNull();
+    expect(fourthVote.value.status).toBe("waiting");
+  });
+
+  it("ends game on host timeout when connected players drop below four", () => {
+    const state = createInitialGameState({
+      lobbyId: "l1",
+      players: players(5),
+      settings: defaultSettings(),
+    });
+
+    let next = expectOk(setPlayerConnection(state, "p1", false, 1000));
+    next = expectOk(setPlayerConnection(next, "p4", false, 1500));
+    next = expectOk(setPlayerConnection(next, "p5", false, 1500));
+
+    const timedOut = applyHostDisconnectTimeout(next, 301000);
+    expect(timedOut.ok).toBe(true);
+    if (!timedOut.ok) return;
+
+    expect(timedOut.value.status).toBe("ended");
+    expect(timedOut.value.phase).toBe("game_over");
   });
 });
 

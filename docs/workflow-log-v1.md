@@ -32,6 +32,8 @@ DSL-style commands (pure domain transitions):
 - `castVote`
 - `closeVotingAndResolve`
 - `finalizeRound`
+- `castHostTransferVote`
+- `applyHostDisconnectTimeout`
 
 ## 4. Contract Map (Pre/Post)
 Pre/post contracts are documented as code comments and result/error types in `src/domain/game/state-machine.ts`.
@@ -100,7 +102,9 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - tie on `close_voting` without tiebreak loser returns `missing_tiebreak` (`400`)
 - admin cancel-round flow returns lobby to setup phase
 - admin set-player-connection flow updates player connection state
-- Latest result: `22` tests passing.
+- host disconnect pauses game state and unanimous transfer votes reassign host
+- host timeout command ends lobby when connected count falls below 4
+- Latest result: `27` tests passing.
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -119,3 +123,4 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Need websocket transport and auth integration.
 - In-memory game store resets on server restart; persistence adapter still pending.
 - Host-transfer/disconnect timeout policies are still unimplemented at domain/application level.
+- Host pause-extension setting (1-hour explicit pause behavior) is still unimplemented.

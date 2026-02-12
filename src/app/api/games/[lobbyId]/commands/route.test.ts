@@ -285,4 +285,64 @@ describe("game command route", () => {
     const p4 = json.state.players.find((player) => player.id === "p4");
     expect(p4?.connected).toBe(false);
   });
+
+  it("pauses lobby on host disconnect and resumes after unanimous transfer votes", async () => {
+    await seedDemoLobby();
+
+    const disconnectResponse = await postCommand("demo-lobby", {
+      type: "set_player_connection",
+      payload: {
+        playerId: "p1",
+        connected: false,
+        nowMs: 1000,
+      },
+    });
+    const disconnectJson = (await disconnectResponse.json()) as {
+      state: { status: string; hostDisconnection: unknown };
+    };
+    expect(disconnectResponse.status).toBe(200);
+    expect(disconnectJson.state.status).toBe("paused");
+
+    await postCommand("demo-lobby", { type: "cast_host_transfer_vote", payload: { voterId: "p2", newHostId: "p3" } });
+    await postCommand("demo-lobby", { type: "cast_host_transfer_vote", payload: { voterId: "p3", newHostId: "p3" } });
+    await postCommand("demo-lobby", { type: "cast_host_transfer_vote", payload: { voterId: "p4", newHostId: "p3" } });
+    const transferResponse = await postCommand("demo-lobby", {
+      type: "cast_host_transfer_vote",
+      payload: { voterId: "p5", newHostId: "p3" },
+    });
+    const transferJson = (await transferResponse.json()) as {
+      state: { status: string; players: Array<{ id: string; isHost: boolean }> };
+    };
+    expect(transferResponse.status).toBe(200);
+    expect(transferJson.state.status).toBe("waiting");
+    expect(transferJson.state.players.find((p) => p.id === "p3")?.isHost).toBe(true);
+    expect(transferJson.state.players.find((p) => p.id === "p1")?.isHost).toBe(false);
+  });
+
+  it("ends lobby when host timeout elapses with fewer than four connected players", async () => {
+    await seedDemoLobby();
+
+    await postCommand("demo-lobby", {
+      type: "set_player_connection",
+      payload: { playerId: "p1", connected: false, nowMs: 1000 },
+    });
+    await postCommand("demo-lobby", {
+      type: "set_player_connection",
+      payload: { playerId: "p4", connected: false, nowMs: 1200 },
+    });
+    await postCommand("demo-lobby", {
+      type: "set_player_connection",
+      payload: { playerId: "p5", connected: false, nowMs: 1200 },
+    });
+
+    const timeoutResponse = await postCommand("demo-lobby", {
+      type: "apply_host_disconnect_timeout",
+      payload: { nowMs: 301000 },
+    });
+    const timeoutJson = (await timeoutResponse.json()) as { state: { status: string; phase: string } };
+
+    expect(timeoutResponse.status).toBe(200);
+    expect(timeoutJson.state.status).toBe("ended");
+    expect(timeoutJson.state.phase).toBe("game_over");
+  });
 });
