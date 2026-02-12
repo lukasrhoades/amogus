@@ -1,0 +1,600 @@
+import {
+  GamePhase,
+  GameSettings,
+  GameState,
+  Player,
+  PlayerId,
+  Result,
+  RoundCancellationReason,
+  RoundPolicy,
+  RoundRoleAssignment,
+  RoundSelection,
+  RoundState,
+  Scoreboard,
+  VoteResolution,
+  WinnerSummary,
+} from "./types";
+
+const MIN_ACTIVE_PLAYERS = 4;
+
+type StartRoundInput = {
+  selection: RoundSelection;
+  roundPolicy: RoundPolicy;
+  roleAssignment: RoundRoleAssignment;
+};
+
+type CloseVotingInput = {
+  allowMissingVotes: boolean;
+  tieBreakLoserId?: PlayerId;
+};
+
+function ok<T>(value: T): Result<T> {
+  return { ok: true, value };
+}
+
+function err<T>(code: Parameters<typeof createError>[0], message: string): Result<T> {
+  return { ok: false, error: createError(code, message) };
+}
+
+function createError(
+  code:
+    | "invalid_phase"
+    | "insufficient_players"
+    | "question_reused"
+    | "player_not_active"
+    | "answer_already_submitted"
+    | "missing_answers"
+    | "self_vote_forbidden"
+    | "vote_locked"
+    | "missing_votes"
+    | "player_already_voted"
+    | "missing_tiebreak"
+    | "invalid_role_assignment"
+    | "invalid_round"
+    | "game_over",
+  message: string,
+) {
+  return { code, message };
+}
+
+function toPlayerMap(players: Player[]): Record<PlayerId, Player> {
+  return players.reduce<Record<PlayerId, Player>>((acc, player) => {
+    acc[player.id] = player;
+    return acc;
+  }, {});
+}
+
+function createInitialScoreboard(players: Player[]): Scoreboard {
+  return players.reduce<Scoreboard>((acc, player) => {
+    acc[player.id] = {
+      totalPoints: 0,
+      impostorSurvivalWins: 0,
+    };
+    return acc;
+  }, {});
+}
+
+export function createInitialGameState(input: {
+  lobbyId: string;
+  players: Player[];
+  settings: GameSettings;
+}): GameState {
+  return {
+    lobbyId: input.lobbyId,
+    status: "waiting",
+    phase: "setup",
+    players: toPlayerMap(input.players),
+    settings: input.settings,
+    usedQuestionPairIds: new Set<string>(),
+    scoreboard: createInitialScoreboard(input.players),
+    completedRounds: 0,
+    currentRound: null,
+  };
+}
+
+function isRoundTerminal(phase: GamePhase): boolean {
+  return phase === "round_result" || phase === "setup";
+}
+
+function activePlayerIdsForRound(
+  state: GameState,
+  questionOwnerId: PlayerId,
+  roundPolicy: RoundPolicy,
+): { activePlayerIds: PlayerId[]; satOutPlayerId: PlayerId | null } {
+  const playerIds = Object.keys(state.players);
+  const playerCount = playerIds.length;
+  const shouldSitOut = roundPolicy.eligibilityEnabled && playerCount >= 5 && state.players[questionOwnerId] !== undefined;
+
+  if (!shouldSitOut) {
+    return { activePlayerIds: playerIds, satOutPlayerId: null };
+  }
+
+  return {
+    activePlayerIds: playerIds.filter((id) => id !== questionOwnerId),
+    satOutPlayerId: questionOwnerId,
+  };
+}
+
+function validateRoleAssignment(
+  activePlayerIds: PlayerId[],
+  roleAssignment: RoundRoleAssignment,
+  impostorCount: number,
+): boolean {
+  if (Object.keys(roleAssignment).length !== activePlayerIds.length) {
+    return false;
+  }
+
+  const impostors = activePlayerIds.filter((playerId) => roleAssignment[playerId] === "impostor");
+  if (impostors.length !== impostorCount) {
+    return false;
+  }
+
+  return activePlayerIds.every((playerId) => roleAssignment[playerId] === "impostor" || roleAssignment[playerId] === "crew");
+}
+
+export function startRound(state: GameState, input: StartRoundInput): Result<GameState> {
+  if (state.phase !== "setup" && state.phase !== "round_result") {
+    return err("invalid_phase", `startRound requires setup/round_result, got ${state.phase}`);
+  }
+
+  if (state.completedRounds >= state.settings.plannedRounds) {
+    return err("game_over", "All planned rounds are already completed");
+  }
+
+  if (!state.settings.questionReuseEnabled && state.usedQuestionPairIds.has(input.selection.questionPair.id)) {
+    return err("question_reused", "Question pair already used in this game");
+  }
+
+  const { activePlayerIds, satOutPlayerId } = activePlayerIdsForRound(
+    state,
+    input.selection.questionPair.ownerId,
+    input.roundPolicy,
+  );
+
+  if (activePlayerIds.length < MIN_ACTIVE_PLAYERS) {
+    return err("insufficient_players", "Active player count is below minimum required for round");
+  }
+
+  if (!validateRoleAssignment(activePlayerIds, input.roleAssignment, input.selection.impostorCount)) {
+    return err("invalid_role_assignment", "Role assignment does not match active players or impostor count");
+  }
+
+  const nextRound: RoundState = {
+    roundNumber: state.completedRounds + 1,
+    phase: "prompting",
+    roundPolicy: input.roundPolicy,
+    selectedQuestionPair: input.selection.questionPair,
+    impostorCount: input.selection.impostorCount,
+    activePlayerIds,
+    satOutPlayerId,
+    roles: input.roleAssignment,
+    answers: {},
+    votes: {},
+    eliminatedPlayerId: null,
+  };
+
+  const nextUsedQuestionIds = new Set(state.usedQuestionPairIds);
+  nextUsedQuestionIds.add(input.selection.questionPair.id);
+
+  return ok({
+    ...state,
+    status: "in_progress",
+    phase: "prompting",
+    currentRound: nextRound,
+    usedQuestionPairIds: nextUsedQuestionIds,
+  });
+}
+
+export function submitAnswer(state: GameState, playerId: PlayerId, answer: string): Result<GameState> {
+  if (state.currentRound === null || state.currentRound.phase !== "prompting") {
+    return err("invalid_phase", "submitAnswer requires prompting phase");
+  }
+
+  if (!state.currentRound.activePlayerIds.includes(playerId)) {
+    return err("player_not_active", "Only active players can submit answers");
+  }
+
+  if (state.currentRound.answers[playerId] !== undefined) {
+    return err("answer_already_submitted", "Player already submitted an answer");
+  }
+
+  const nextRound: RoundState = {
+    ...state.currentRound,
+    answers: {
+      ...state.currentRound.answers,
+      [playerId]: answer,
+    },
+  };
+
+  return ok({
+    ...state,
+    currentRound: nextRound,
+  });
+}
+
+function allAnswersSubmitted(round: RoundState): boolean {
+  return round.activePlayerIds.every((playerId) => round.answers[playerId] !== undefined);
+}
+
+export function revealQuestion(state: GameState): Result<GameState> {
+  if (state.currentRound === null || state.currentRound.phase !== "prompting") {
+    return err("invalid_phase", "revealQuestion requires prompting phase");
+  }
+
+  if (!allAnswersSubmitted(state.currentRound)) {
+    return err("missing_answers", "Cannot reveal question before all active answers are submitted");
+  }
+
+  const nextRound: RoundState = {
+    ...state.currentRound,
+    phase: "reveal",
+  };
+
+  return ok({
+    ...state,
+    phase: "reveal",
+    currentRound: nextRound,
+  });
+}
+
+export function startDiscussion(state: GameState): Result<GameState> {
+  if (state.currentRound === null || state.currentRound.phase !== "reveal") {
+    return err("invalid_phase", "startDiscussion requires reveal phase");
+  }
+
+  const nextRound: RoundState = {
+    ...state.currentRound,
+    phase: "discussion",
+  };
+
+  return ok({
+    ...state,
+    phase: "discussion",
+    currentRound: nextRound,
+  });
+}
+
+export function endDiscussion(state: GameState): Result<GameState> {
+  if (state.currentRound === null || state.currentRound.phase !== "discussion") {
+    return err("invalid_phase", "endDiscussion requires discussion phase");
+  }
+
+  const nextRound: RoundState = {
+    ...state.currentRound,
+    phase: "voting",
+  };
+
+  return ok({
+    ...state,
+    phase: "voting",
+    currentRound: nextRound,
+  });
+}
+
+export function castVote(state: GameState, voterId: PlayerId, targetId: PlayerId): Result<GameState> {
+  if (state.currentRound === null || state.currentRound.phase !== "voting") {
+    return err("invalid_phase", "castVote requires voting phase");
+  }
+
+  if (!state.currentRound.activePlayerIds.includes(voterId)) {
+    return err("player_not_active", "Only active players can vote");
+  }
+
+  if (!state.currentRound.activePlayerIds.includes(targetId)) {
+    return err("player_not_active", "Vote target must be an active player");
+  }
+
+  if (voterId === targetId) {
+    return err("self_vote_forbidden", "Self vote is not allowed");
+  }
+
+  if (state.currentRound.votes[voterId] !== undefined && !state.currentRound.roundPolicy.allowVoteChanges) {
+    return err("vote_locked", "Vote changes are disabled in this round");
+  }
+
+  const nextRound: RoundState = {
+    ...state.currentRound,
+    votes: {
+      ...state.currentRound.votes,
+      [voterId]: targetId,
+    },
+  };
+
+  return ok({
+    ...state,
+    currentRound: nextRound,
+  });
+}
+
+function tallyVotes(round: RoundState): Record<PlayerId, number> {
+  return round.activePlayerIds.reduce<Record<PlayerId, number>>((acc, playerId) => {
+    acc[playerId] = 0;
+    return acc;
+  }, Object.create(null) as Record<PlayerId, number>);
+}
+
+function resolveVotes(round: RoundState, tieBreakLoserId?: PlayerId): Result<VoteResolution> {
+  const tally = tallyVotes(round);
+
+  Object.values(round.votes).forEach((targetId) => {
+    if (targetId !== undefined && tally[targetId] !== undefined) {
+      tally[targetId] += 1;
+    }
+  });
+
+  const maxVotes = Math.max(...Object.values(tally));
+  const topCandidates = Object.keys(tally).filter((playerId) => tally[playerId] === maxVotes);
+
+  if (topCandidates.length === 1) {
+    return ok({
+      eliminatedPlayerId: topCandidates[0],
+      topCandidates,
+      requiredTiebreak: false,
+    });
+  }
+
+  if (tieBreakLoserId === undefined || !topCandidates.includes(tieBreakLoserId)) {
+    return err("missing_tiebreak", "Tie detected and tieBreakLoserId is missing or invalid");
+  }
+
+  return ok({
+    eliminatedPlayerId: tieBreakLoserId,
+    topCandidates,
+    requiredTiebreak: true,
+  });
+}
+
+function allVotesSubmitted(round: RoundState): boolean {
+  return round.activePlayerIds.every((playerId) => round.votes[playerId] !== undefined);
+}
+
+export function closeVotingAndResolve(state: GameState, input: CloseVotingInput): Result<GameState> {
+  if (state.currentRound === null || state.currentRound.phase !== "voting") {
+    return err("invalid_phase", "closeVotingAndResolve requires voting phase");
+  }
+
+  if (!allVotesSubmitted(state.currentRound) && !input.allowMissingVotes) {
+    return err("missing_votes", "Cannot close voting while votes are missing");
+  }
+
+  const resolution = resolveVotes(state.currentRound, input.tieBreakLoserId);
+  if (!resolution.ok) {
+    return resolution;
+  }
+
+  const nextRound: RoundState = {
+    ...state.currentRound,
+    phase: "round_result",
+    eliminatedPlayerId: resolution.value.eliminatedPlayerId,
+  };
+
+  return ok({
+    ...state,
+    phase: "round_result",
+    currentRound: nextRound,
+  });
+}
+
+function applyScore(scoreboard: Scoreboard, playerId: PlayerId, delta: number): Scoreboard {
+  const previous = scoreboard[playerId];
+  return {
+    ...scoreboard,
+    [playerId]: {
+      ...previous,
+      totalPoints: previous.totalPoints + delta,
+    },
+  };
+}
+
+function withImpostorSurvivalWin(scoreboard: Scoreboard, playerId: PlayerId): Scoreboard {
+  const previous = scoreboard[playerId];
+  return {
+    ...scoreboard,
+    [playerId]: {
+      ...previous,
+      impostorSurvivalWins: previous.impostorSurvivalWins + 1,
+    },
+  };
+}
+
+function finalizeRoundScores(state: GameState, round: RoundState): Scoreboard {
+  const crewPenaltyEnabled = state.settings.scoring.crewVotedOutPenaltyEnabled;
+  const crewPenalty = crewPenaltyEnabled ? state.settings.scoring.crewVotedOutPenaltyPoints : 0;
+  const impostorSurvivePoints = state.settings.scoring.impostorSurvivesPoints;
+  const crewImpostorCatchPoints = state.settings.scoring.crewVotesOutImpostorPoints;
+
+  const activePlayerIds = round.activePlayerIds;
+  const impostorIds = activePlayerIds.filter((id) => round.roles[id] === "impostor");
+  const crewIds = activePlayerIds.filter((id) => round.roles[id] === "crew");
+  const eliminated = round.eliminatedPlayerId;
+
+  let nextScoreboard = { ...state.scoreboard };
+
+  if (round.impostorCount === 0) {
+    if (eliminated !== null && round.roles[eliminated] === "crew") {
+      nextScoreboard = applyScore(nextScoreboard, eliminated, crewPenalty);
+    }
+    return nextScoreboard;
+  }
+
+  if (round.impostorCount === 1) {
+    const impostorId = impostorIds[0];
+    if (eliminated === impostorId) {
+      crewIds.forEach((crewId) => {
+        nextScoreboard = applyScore(nextScoreboard, crewId, crewImpostorCatchPoints);
+      });
+      return nextScoreboard;
+    }
+
+    nextScoreboard = applyScore(nextScoreboard, impostorId, impostorSurvivePoints);
+    nextScoreboard = withImpostorSurvivalWin(nextScoreboard, impostorId);
+    if (eliminated !== null && round.roles[eliminated] === "crew") {
+      nextScoreboard = applyScore(nextScoreboard, eliminated, crewPenalty);
+    }
+    return nextScoreboard;
+  }
+
+  const eliminatedIsImpostor = eliminated !== null && round.roles[eliminated] === "impostor";
+  if (eliminatedIsImpostor) {
+    const survivingImpostor = impostorIds.find((id) => id !== eliminated);
+    if (survivingImpostor !== undefined) {
+      nextScoreboard = applyScore(nextScoreboard, survivingImpostor, impostorSurvivePoints);
+      nextScoreboard = withImpostorSurvivalWin(nextScoreboard, survivingImpostor);
+    }
+    crewIds.forEach((crewId) => {
+      nextScoreboard = applyScore(nextScoreboard, crewId, crewImpostorCatchPoints);
+    });
+    return nextScoreboard;
+  }
+
+  impostorIds.forEach((impostorId) => {
+    nextScoreboard = applyScore(nextScoreboard, impostorId, impostorSurvivePoints);
+    nextScoreboard = withImpostorSurvivalWin(nextScoreboard, impostorId);
+  });
+
+  if (eliminated !== null && round.roles[eliminated] === "crew") {
+    nextScoreboard = applyScore(nextScoreboard, eliminated, crewPenalty);
+  }
+
+  return nextScoreboard;
+}
+
+export function finalizeRound(state: GameState): Result<GameState> {
+  if (state.currentRound === null || state.currentRound.phase !== "round_result") {
+    return err("invalid_phase", "finalizeRound requires round_result phase");
+  }
+
+  const nextScoreboard = finalizeRoundScores(state, state.currentRound);
+  const nextCompletedRounds = state.completedRounds + 1;
+  const plannedRounds = state.settings.plannedRounds;
+  const isGameOver = nextCompletedRounds >= plannedRounds;
+
+  return ok({
+    ...state,
+    status: isGameOver ? "ended" : "in_progress",
+    phase: isGameOver ? "game_over" : "setup",
+    scoreboard: nextScoreboard,
+    completedRounds: nextCompletedRounds,
+    currentRound: null,
+  });
+}
+
+export function cancelCurrentRoundBeforeReveal(
+  state: GameState,
+  _reason: RoundCancellationReason,
+): Result<GameState> {
+  if (state.currentRound === null) {
+    return err("invalid_round", "No round to cancel");
+  }
+
+  if (state.currentRound.phase !== "prompting") {
+    return err("invalid_phase", "Current round can only be canceled before reveal");
+  }
+
+  const shouldReducePlannedRounds =
+    state.settings.roundsCappedByQuestions &&
+    !state.settings.questionReuseEnabled &&
+    state.settings.plannedRounds > state.completedRounds;
+
+  const nextPlannedRounds = shouldReducePlannedRounds
+    ? state.settings.plannedRounds - 1
+    : state.settings.plannedRounds;
+
+  return ok({
+    ...state,
+    phase: "setup",
+    currentRound: null,
+    settings: {
+      ...state.settings,
+      plannedRounds: nextPlannedRounds,
+    },
+  });
+}
+
+export function computeWinnerSummary(
+  state: GameState,
+  randomTieWinnerId?: PlayerId,
+): Result<WinnerSummary> {
+  if (state.phase !== "game_over") {
+    return err("invalid_phase", "Winner summary requires game_over phase");
+  }
+
+  const playerIds = Object.keys(state.scoreboard);
+  const highestScore = Math.max(...playerIds.map((id) => state.scoreboard[id].totalPoints));
+  const topByScore = playerIds.filter((id) => state.scoreboard[id].totalPoints === highestScore);
+
+  if (topByScore.length === 1) {
+    return ok({
+      winnerPlayerIds: topByScore,
+      reason: "highest_score",
+    });
+  }
+
+  const highestImpostorWins = Math.max(...topByScore.map((id) => state.scoreboard[id].impostorSurvivalWins));
+  const topByImpostorWins = topByScore.filter((id) => state.scoreboard[id].impostorSurvivalWins === highestImpostorWins);
+
+  if (topByImpostorWins.length === 1) {
+    return ok({
+      winnerPlayerIds: topByImpostorWins,
+      reason: "impostor_survival_tiebreak",
+    });
+  }
+
+  if (randomTieWinnerId === undefined || !topByImpostorWins.includes(randomTieWinnerId)) {
+    return err("missing_tiebreak", "Random tiebreak winner must be provided for final tie");
+  }
+
+  return ok({
+    winnerPlayerIds: [randomTieWinnerId],
+    reason: "random_tiebreak",
+  });
+}
+
+export function canStartAnotherRound(state: GameState): boolean {
+  if (state.phase === "game_over") {
+    return false;
+  }
+
+  const connectedPlayers = Object.values(state.players).filter((player) => player.connected).length;
+  return connectedPlayers >= MIN_ACTIVE_PLAYERS && state.completedRounds < state.settings.plannedRounds && isRoundTerminal(state.phase);
+}
+
+export function removePlayer(state: GameState, playerId: PlayerId): Result<GameState> {
+  if (state.players[playerId] === undefined) {
+    return err("invalid_round", `Player ${playerId} does not exist`);
+  }
+
+  const nextPlayers = { ...state.players };
+  delete nextPlayers[playerId];
+
+  const nextScoreboard = { ...state.scoreboard };
+  delete nextScoreboard[playerId];
+
+  return ok({
+    ...state,
+    players: nextPlayers,
+    scoreboard: nextScoreboard,
+  });
+}
+
+export function setPlayerConnection(
+  state: GameState,
+  playerId: PlayerId,
+  connected: boolean,
+): Result<GameState> {
+  const player = state.players[playerId];
+  if (player === undefined) {
+    return err("invalid_round", `Player ${playerId} does not exist`);
+  }
+
+  return ok({
+    ...state,
+    players: {
+      ...state.players,
+      [playerId]: {
+        ...player,
+        connected,
+      },
+    },
+  });
+}
