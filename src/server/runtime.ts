@@ -1,10 +1,14 @@
 import { InMemoryGameSessionRepo } from "../adapters/in-memory/in-memory-game-session-repo";
+import { InMemoryAuthRepo } from "../adapters/in-memory/in-memory-auth-repo";
 import { InMemoryQuestionPairRepo } from "../adapters/in-memory/in-memory-question-pair-repo";
+import { PrismaAuthRepo } from "../adapters/prisma/prisma-auth-repo";
 import { PrismaGameSessionRepo } from "../adapters/prisma/prisma-game-session-repo";
 import { PrismaQuestionPairRepo } from "../adapters/prisma/prisma-question-pair-repo";
+import { AuthService } from "../application/auth-service";
 import { GameSessionService } from "../application/game-session-service";
 import { QuestionPairService } from "../application/question-pair-service";
 import { GameState, LobbyId, PlayerId, QuestionPair, QuestionPairId } from "../domain/game/types";
+import { AuthRepo } from "../ports/auth-repo";
 import { GameSessionRepo } from "../ports/game-session-repo";
 import { QuestionPairRepo } from "../ports/question-pair-repo";
 import { getPrismaClient } from "./prisma-client";
@@ -15,6 +19,7 @@ const runtimeSingleton = Symbol.for("sdg.runtime");
 type RepoDriverMode = "memory" | "prisma" | "auto";
 
 type Runtime = {
+  authService: AuthService;
   gameService: GameSessionService;
   questionPairService: QuestionPairService;
   lobbyEvents: LobbyEventBus;
@@ -46,9 +51,10 @@ function maybeRunIdleCleanup(runtime: Runtime): void {
 }
 
 function createRuntime(): Runtime {
-  const { gameSessionRepo, questionPairRepo } = createRepos();
+  const { authRepo, gameSessionRepo, questionPairRepo } = createRepos();
   const lobbyEvents = new LobbyEventBus();
   return {
+    authService: new AuthService(authRepo),
     gameService: new GameSessionService(
       gameSessionRepo,
       {
@@ -71,7 +77,7 @@ function getRepoDriverMode(): RepoDriverMode {
   return "auto";
 }
 
-function createRepos(): { gameSessionRepo: GameSessionRepo; questionPairRepo: QuestionPairRepo } {
+function createRepos(): { authRepo: AuthRepo; gameSessionRepo: GameSessionRepo; questionPairRepo: QuestionPairRepo } {
   const driver = getRepoDriverMode();
   if (process.env.NODE_ENV === "production" && driver !== "prisma") {
     throw new Error("Production mode requires GAME_SESSION_REPO=prisma");
@@ -80,6 +86,7 @@ function createRepos(): { gameSessionRepo: GameSessionRepo; questionPairRepo: Qu
   if (driver === "prisma") {
     const prisma = getPrismaClient();
     return {
+      authRepo: new PrismaAuthRepo(prisma),
       gameSessionRepo: new PrismaGameSessionRepo(prisma),
       questionPairRepo: new PrismaQuestionPairRepo(prisma),
     };
@@ -87,6 +94,10 @@ function createRepos(): { gameSessionRepo: GameSessionRepo; questionPairRepo: Qu
   if (driver === "auto") {
     const prisma = getPrismaClient();
     return {
+      authRepo: new AutoFallbackAuthRepo(
+        new PrismaAuthRepo(prisma),
+        new InMemoryAuthRepo(),
+      ),
       gameSessionRepo: new AutoFallbackGameSessionRepo(
         new PrismaGameSessionRepo(prisma),
         new InMemoryGameSessionRepo(),
@@ -98,6 +109,7 @@ function createRepos(): { gameSessionRepo: GameSessionRepo; questionPairRepo: Qu
     };
   }
   return {
+    authRepo: new InMemoryAuthRepo(),
     gameSessionRepo: new InMemoryGameSessionRepo(),
     questionPairRepo: new InMemoryQuestionPairRepo(),
   };
@@ -275,6 +287,108 @@ class AutoFallbackQuestionPairRepo implements QuestionPairRepo {
       }
       this.useFallback = true;
       return this.fallback.deleteByOwner(ownerId, pairId);
+    }
+  }
+}
+
+class AutoFallbackAuthRepo implements AuthRepo {
+  private useFallback = false;
+
+  constructor(
+    private readonly primary: AuthRepo,
+    private readonly fallback: AuthRepo,
+  ) {}
+
+  async createUser(user: import("../ports/auth-repo").AuthUser): Promise<void> {
+    if (this.useFallback) {
+      await this.fallback.createUser(user);
+      return;
+    }
+    try {
+      await this.primary.createUser(user);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      await this.fallback.createUser(user);
+    }
+  }
+
+  async getUserByUsername(username: string) {
+    if (this.useFallback) {
+      return this.fallback.getUserByUsername(username);
+    }
+    try {
+      return await this.primary.getUserByUsername(username);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      return this.fallback.getUserByUsername(username);
+    }
+  }
+
+  async getUserById(userId: string) {
+    if (this.useFallback) {
+      return this.fallback.getUserById(userId);
+    }
+    try {
+      return await this.primary.getUserById(userId);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      return this.fallback.getUserById(userId);
+    }
+  }
+
+  async createSession(record: import("../ports/auth-repo").AuthSessionRecord): Promise<void> {
+    if (this.useFallback) {
+      await this.fallback.createSession(record);
+      return;
+    }
+    try {
+      await this.primary.createSession(record);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      await this.fallback.createSession(record);
+    }
+  }
+
+  async getSessionByToken(token: string) {
+    if (this.useFallback) {
+      return this.fallback.getSessionByToken(token);
+    }
+    try {
+      return await this.primary.getSessionByToken(token);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      return this.fallback.getSessionByToken(token);
+    }
+  }
+
+  async deleteSession(token: string): Promise<void> {
+    if (this.useFallback) {
+      await this.fallback.deleteSession(token);
+      return;
+    }
+    try {
+      await this.primary.deleteSession(token);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      await this.fallback.deleteSession(token);
     }
   }
 }

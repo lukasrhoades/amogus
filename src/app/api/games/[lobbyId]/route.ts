@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { getRuntime } from "../../../../server/runtime";
 import { serializeGameState } from "../../../../server/serialize-game-state";
-import { readSessionFromRequest } from "../../../../server/session/session";
+import { requireSession } from "../../../../server/session/require-session";
 
 const paramsSchema = z.object({
   lobbyId: z.string().min(1),
@@ -14,6 +14,17 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ lobbyId: string }> },
 ) {
+  const session = await requireSession(request);
+  if (session === null) {
+    return NextResponse.json(
+      {
+        error: "no_session",
+        message: "Log in before loading a lobby",
+      },
+      { status: 401 },
+    );
+  }
+
   const params = paramsSchema.safeParse(await context.params);
   if (!params.success) {
     return NextResponse.json(
@@ -37,6 +48,5 @@ export async function GET(
     );
   }
 
-  const session = readSessionFromRequest(request);
-  return NextResponse.json(serializeGameState(state.value, session?.playerId));
+  return NextResponse.json(serializeGameState(state.value, session.userId));
 }

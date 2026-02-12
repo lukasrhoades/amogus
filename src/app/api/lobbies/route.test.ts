@@ -3,9 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { POST as createLobby } from "./route";
 import { GET as getLobby } from "../games/[lobbyId]/route";
 import { resetRuntimeForTests } from "../../../server/runtime";
-import { encodeSessionCookieValue } from "../../../server/session/session";
-
-const hostSession = { playerId: "host-1", displayName: "Lukas" };
+import { authCookieFor } from "../test-helpers/auth";
 
 describe("lobbies create route", () => {
   beforeEach(() => {
@@ -14,11 +12,12 @@ describe("lobbies create route", () => {
   });
 
   it("creates a lobby and allows reading it through game route", async () => {
+    const hostCookie = await authCookieFor("host-1");
     const request = new Request("http://localhost/api/lobbies", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: `sdg_session=${encodeSessionCookieValue(hostSession)}`,
+        Cookie: hostCookie,
       },
       body: JSON.stringify({
         lobbyId: "alpha123",
@@ -32,7 +31,7 @@ describe("lobbies create route", () => {
     expect(json.lobbyId).toBe("alpha123");
     expect(json.playerCount).toBe(1);
 
-    const lobbyResponse = await getLobby(new Request("http://localhost/api/games/alpha123"), {
+    const lobbyResponse = await getLobby(new Request("http://localhost/api/games/alpha123", { headers: { Cookie: hostCookie } }), {
       params: Promise.resolve({ lobbyId: "alpha123" }),
     });
     const lobbyJson = (await lobbyResponse.json()) as { players: Array<{ id: string; isHost: boolean }> };

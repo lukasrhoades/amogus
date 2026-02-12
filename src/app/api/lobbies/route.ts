@@ -4,14 +4,14 @@ import { z } from "zod";
 
 import { getRuntime } from "../../../server/runtime";
 import { createLobbyState } from "../../../server/lobby/defaults";
-import { readSessionFromRequest } from "../../../server/session/session";
+import { requireSession } from "../../../server/session/require-session";
 
 const createLobbySchema = z.object({
   lobbyId: z.string().min(4).max(32),
 });
 
 export async function POST(request: Request) {
-  const session = readSessionFromRequest(request);
+  const session = await requireSession(request);
   if (session === null) {
     return NextResponse.json(
       {
@@ -47,15 +47,15 @@ export async function POST(request: Request) {
 
   const state = createLobbyState({
     lobbyId: parsed.data.lobbyId,
-    hostPlayerId: session.playerId,
-    hostDisplayName: session.displayName,
+    hostPlayerId: session.userId,
+    hostDisplayName: session.username,
   });
   await runtime.gameService.create(state);
 
   return NextResponse.json(
     {
       lobbyId: state.lobbyId,
-      hostPlayerId: session.playerId,
+      hostPlayerId: session.userId,
       playerCount: Object.keys(state.players).length,
       phase: state.phase,
     },

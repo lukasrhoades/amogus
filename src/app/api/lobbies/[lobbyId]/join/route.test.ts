@@ -3,10 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { POST as createLobby } from "../../route";
 import { POST as joinLobby } from "./route";
 import { resetRuntimeForTests } from "../../../../../server/runtime";
-import { encodeSessionCookieValue } from "../../../../../server/session/session";
-
-const hostSession = { playerId: "host-1", displayName: "Host" };
-const joinSession = { playerId: "p2", displayName: "Avery" };
+import { authCookieFor } from "../../../test-helpers/auth";
 
 describe("lobbies join route", () => {
   beforeEach(() => {
@@ -15,11 +12,13 @@ describe("lobbies join route", () => {
   });
 
   it("adds a player to an existing lobby", async () => {
+    const hostCookie = await authCookieFor("host-1");
+    const joinCookie = await authCookieFor("p2");
     const createRequest = new Request("http://localhost/api/lobbies", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: `sdg_session=${encodeSessionCookieValue(hostSession)}`,
+        Cookie: hostCookie,
       },
       body: JSON.stringify({
         lobbyId: "alpha123",
@@ -31,7 +30,7 @@ describe("lobbies join route", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: `sdg_session=${encodeSessionCookieValue(joinSession)}`,
+        Cookie: joinCookie,
       },
       body: JSON.stringify({}),
     });

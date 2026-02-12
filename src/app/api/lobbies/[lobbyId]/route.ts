@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRuntime } from "../../../../server/runtime";
-import { readSessionFromRequest } from "../../../../server/session/session";
+import { requireSession } from "../../../../server/session/require-session";
 
 const paramsSchema = z.object({
   lobbyId: z.string().min(1),
@@ -12,7 +12,7 @@ export async function DELETE(
   request: Request,
   context: { params: Promise<{ lobbyId: string }> },
 ) {
-  const session = readSessionFromRequest(request);
+  const session = await requireSession(request);
   if (session === null) {
     return NextResponse.json(
       {
@@ -46,7 +46,7 @@ export async function DELETE(
     );
   }
 
-  const caller = current.value.players[session.playerId];
+  const caller = current.value.players[session.userId];
   if (caller === undefined || !caller.isHost) {
     return NextResponse.json(
       {

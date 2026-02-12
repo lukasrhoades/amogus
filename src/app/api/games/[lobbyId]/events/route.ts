@@ -1,6 +1,6 @@
 import { getRuntime } from "../../../../../server/runtime";
 import { serializeGameState } from "../../../../../server/serialize-game-state";
-import { readSessionFromRequest } from "../../../../../server/session/session";
+import { requireSession } from "../../../../../server/session/require-session";
 
 function sseData(value: unknown): string {
   return `data: ${JSON.stringify(value)}\n\n`;
@@ -10,9 +10,13 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ lobbyId: string }> },
 ) {
+  const session = await requireSession(request);
+  if (session === null) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
   const { lobbyId } = await context.params;
   const runtime = getRuntime();
-  const session = readSessionFromRequest(request);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -52,11 +56,11 @@ export async function GET(
 
       const existing = await runtime.gameService.get(lobbyId);
       if (existing.ok) {
-        safeEnqueue(sseData({ type: "state", state: serializeGameState(existing.value, session?.playerId) }));
+        safeEnqueue(sseData({ type: "state", state: serializeGameState(existing.value, session.userId) }));
       }
 
       unsubscribe = runtime.lobbyEvents.subscribe(lobbyId, (state) => {
-        safeEnqueue(sseData({ type: "state", state: serializeGameState(state, session?.playerId) }));
+        safeEnqueue(sseData({ type: "state", state: serializeGameState(state, session.userId) }));
       });
 
       heartbeat = setInterval(() => {

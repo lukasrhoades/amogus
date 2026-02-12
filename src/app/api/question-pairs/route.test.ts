@@ -3,15 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { GET as listPairs, POST as createPair } from "./route";
 import { DELETE as deletePair } from "./[pairId]/route";
 import { resetRuntimeForTests } from "../../../server/runtime";
-import { encodeSessionCookieValue } from "../../../server/session/session";
+import { authCookieFor } from "../test-helpers/auth";
 
-const session = { playerId: "p1", displayName: "Host" };
-const session2 = { playerId: "p2", displayName: "Avery" };
-
-function authHeaders(s = session) {
+function authHeaders(cookie: string) {
   return {
     "Content-Type": "application/json",
-    Cookie: `sdg_session=${encodeSessionCookieValue(s)}`,
+    Cookie: cookie,
   };
 }
 
@@ -22,10 +19,11 @@ describe("question pair routes", () => {
   });
 
   it("creates, lists, and deletes own question pairs", async () => {
+    const cookie = await authCookieFor("p1");
     const create = await createPair(
       new Request("http://localhost/api/question-pairs", {
         method: "POST",
-        headers: authHeaders(),
+        headers: authHeaders(cookie),
         body: JSON.stringify({
           promptA: { text: "Q A", target: "crew" },
           promptB: { text: "Q B", target: "impostor" },
@@ -38,7 +36,7 @@ describe("question pair routes", () => {
     const list = await listPairs(
       new Request("http://localhost/api/question-pairs", {
         method: "GET",
-        headers: authHeaders(),
+        headers: authHeaders(cookie),
       }),
     );
     const listJson = (await list.json()) as { pairs: Array<{ id: string }> };
@@ -48,7 +46,7 @@ describe("question pair routes", () => {
     const deleted = await deletePair(
       new Request(`http://localhost/api/question-pairs/${createJson.pair.id}`, {
         method: "DELETE",
-        headers: authHeaders(),
+        headers: authHeaders(cookie),
       }),
       { params: Promise.resolve({ pairId: createJson.pair.id }) },
     );
@@ -56,10 +54,11 @@ describe("question pair routes", () => {
   });
 
   it("rejects invalid pair that is not permissible for impostor", async () => {
+    const cookie = await authCookieFor("p1");
     const create = await createPair(
       new Request("http://localhost/api/question-pairs", {
         method: "POST",
-        headers: authHeaders(),
+        headers: authHeaders(cookie),
         body: JSON.stringify({
           promptA: { text: "Q A", target: "crew" },
           promptB: { text: "Q B", target: "crew" },
@@ -71,10 +70,12 @@ describe("question pair routes", () => {
   });
 
   it("lists only pairs owned by current session", async () => {
+    const cookie1 = await authCookieFor("p1");
+    const cookie2 = await authCookieFor("p2");
     await createPair(
       new Request("http://localhost/api/question-pairs", {
         method: "POST",
-        headers: authHeaders(session),
+        headers: authHeaders(cookie1),
         body: JSON.stringify({
           promptA: { text: "A1", target: "crew" },
           promptB: { text: "A2", target: "impostor" },
@@ -84,7 +85,7 @@ describe("question pair routes", () => {
     await createPair(
       new Request("http://localhost/api/question-pairs", {
         method: "POST",
-        headers: authHeaders(session2),
+        headers: authHeaders(cookie2),
         body: JSON.stringify({
           promptA: { text: "B1", target: "both" },
           promptB: { text: "B2", target: "crew" },
@@ -95,7 +96,7 @@ describe("question pair routes", () => {
     const list1 = await listPairs(
       new Request("http://localhost/api/question-pairs", {
         method: "GET",
-        headers: authHeaders(session),
+        headers: authHeaders(cookie1),
       }),
     );
     const list1Json = (await list1.json()) as { pairs: Array<{ promptA: { text: string } }> };
@@ -105,7 +106,7 @@ describe("question pair routes", () => {
     const list2 = await listPairs(
       new Request("http://localhost/api/question-pairs", {
         method: "GET",
-        headers: authHeaders(session2),
+        headers: authHeaders(cookie2),
       }),
     );
     const list2Json = (await list2.json()) as { pairs: Array<{ promptA: { text: string } }> };

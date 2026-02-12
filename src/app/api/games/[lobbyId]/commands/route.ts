@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { getRuntime } from "../../../../../server/runtime";
 import { serializeGameState } from "../../../../../server/serialize-game-state";
-import { readSessionFromRequest } from "../../../../../server/session/session";
+import { requireSession } from "../../../../../server/session/require-session";
 
 const paramsSchema = z.object({
   lobbyId: z.string().min(1),
@@ -249,7 +249,7 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ lobbyId: string }> },
 ) {
-  const session = readSessionFromRequest(request);
+  const session = await requireSession(request);
   if (session === null) {
     return NextResponse.json(
       {
@@ -282,7 +282,7 @@ export async function POST(
     );
   }
 
-  const result = await runCommand(params.data.lobbyId, parsed.data, session.playerId);
+  const result = await runCommand(params.data.lobbyId, parsed.data, session.userId);
   if (!result.ok) {
     return NextResponse.json(
       {
@@ -295,6 +295,6 @@ export async function POST(
 
   return NextResponse.json({
     ok: true,
-    state: serializeGameState(result.value, session.playerId),
+    state: serializeGameState(result.value, session.userId),
   });
 }

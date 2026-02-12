@@ -39,6 +39,13 @@ Implemented in:
 - `src/adapters/prisma/prisma-question-pair-repo.ts`
 - `src/app/api/question-pairs/route.ts`
 - `src/app/api/question-pairs/[pairId]/route.ts`
+- `src/ports/auth-repo.ts`
+- `src/application/auth-service.ts`
+- `src/adapters/in-memory/in-memory-auth-repo.ts`
+- `src/adapters/prisma/prisma-auth-repo.ts`
+- `src/server/session/session.ts`
+- `src/server/session/require-session.ts`
+- `src/app/api/session/route.ts`
 
 DSL-style commands (pure domain transitions):
 - `createInitialGameState`
@@ -81,6 +88,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Realtime boundary added: SSE stream per lobby with in-process event bus fanout.
 - Question-pair ingress now validates prompt target unions and prompt text length with Zod.
 - Question-pair create flow enforces invariant: at least one crew-permissible and one impostor-permissible prompt per pair.
+- Auth boundary now uses opaque server-side session token in `httpOnly` cookie; route identity is loaded from auth repo instead of client-asserted payloads.
 
 ## 8. Security Log
 - Dependencies introduced:
@@ -155,6 +163,9 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - `src/application/game-session-service.test.ts` (`startRoundAuto`)
 - `src/app/api/games/[lobbyId]/commands/route.test.ts` (`start_round_auto`)
 - Latest result: `37` tests passing.
+- Added auth route coverage for register/login/get/logout session flow.
+- Updated lobby/game/question route tests to use authenticated session cookies produced by auth route.
+- Latest result: `45` tests passing.
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -180,3 +191,4 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - UI round-start defaults now derive role assignment from active lobby state instead of hardcoded player IDs.
 - Data model migration still required to move question pairs from fixed fields (`canonicalQuestion`, `impostorQuestion`) to prompt-target representation with validation invariant for crew/impostor permissibility.
 - UI now supports question-pair CRUD and host `start_round_auto`; presentation and role-specific prompt rendering are still prototype-level and need round-view polish.
+- Login-based identity is now in place; migration still required in local DB for `User` and `AuthSession` tables before Prisma mode runtime can authenticate users.

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRuntime } from "../../../../server/runtime";
-import { readSessionFromRequest } from "../../../../server/session/session";
+import { requireSession } from "../../../../server/session/require-session";
 
 const paramsSchema = z.object({
   pairId: z.string().min(1),
@@ -12,7 +12,7 @@ export async function DELETE(
   request: Request,
   context: { params: Promise<{ pairId: string }> },
 ) {
-  const session = readSessionFromRequest(request);
+  const session = await requireSession(request);
   if (session === null) {
     return NextResponse.json({ error: "no_session", message: "Create a session before deleting question pairs" }, { status: 401 });
   }
@@ -23,7 +23,7 @@ export async function DELETE(
   }
 
   const runtime = getRuntime();
-  const result = await runtime.questionPairService.deleteOwn(session.playerId, params.data.pairId);
+  const result = await runtime.questionPairService.deleteOwn(session.userId, params.data.pairId);
   if (!result.ok) {
     return NextResponse.json({ error: result.error.code, message: result.error.message }, { status: 404 });
   }

@@ -6,17 +6,17 @@ import { POST as createLobby } from "../../lobbies/route";
 import { POST as joinLobby } from "../../lobbies/[lobbyId]/join/route";
 import { POST as createQuestionPair } from "../../question-pairs/route";
 import { resetRuntimeForTests } from "../../../../server/runtime";
-import { encodeSessionCookieValue } from "../../../../server/session/session";
+import { authCookieFor } from "../../test-helpers/auth";
 
-const hostSession = { playerId: "p1", displayName: "Host" };
-const p2Session = { playerId: "p2", displayName: "Avery" };
-const p3Session = { playerId: "p3", displayName: "Riley" };
-const p4Session = { playerId: "p4", displayName: "Jordan" };
+const hostUsername = "p1";
+const p2Username = "p2";
+const p3Username = "p3";
+const p4Username = "p4";
 
-function cookieHeader(session: { playerId: string; displayName: string }): Record<string, string> {
+function cookieHeader(cookie: string): Record<string, string> {
   return {
     "Content-Type": "application/json",
-    Cookie: `sdg_session=${encodeSessionCookieValue(session)}`,
+    Cookie: cookie,
   };
 }
 
@@ -25,20 +25,25 @@ function context(lobbyId: string) {
 }
 
 async function setupLobby(lobbyId: string) {
+  const hostCookie = await authCookieFor(hostUsername);
+  const p2Cookie = await authCookieFor(p2Username);
+  const p3Cookie = await authCookieFor(p3Username);
+  const p4Cookie = await authCookieFor(p4Username);
+
   const created = await createLobby(
     new Request("http://localhost/api/lobbies", {
       method: "POST",
-      headers: cookieHeader(hostSession),
+      headers: cookieHeader(hostCookie),
       body: JSON.stringify({ lobbyId }),
     }),
   );
   expect(created.status).toBe(201);
 
-  for (const session of [p2Session, p3Session, p4Session]) {
+  for (const cookie of [p2Cookie, p3Cookie, p4Cookie]) {
     const joined = await joinLobby(
       new Request(`http://localhost/api/lobbies/${lobbyId}/join`, {
         method: "POST",
-        headers: cookieHeader(session),
+        headers: cookieHeader(cookie),
         body: JSON.stringify({}),
       }),
       context(lobbyId),
@@ -54,12 +59,16 @@ describe("game read route viewer prompts", () => {
   });
 
   it("returns role-specific prompt view for each viewer", async () => {
+    const hostCookie = await authCookieFor(hostUsername);
+    const p2Cookie = await authCookieFor(p2Username);
+    const p3Cookie = await authCookieFor(p3Username);
+
     await setupLobby("viewer-lobby");
 
     const createdPair = await createQuestionPair(
       new Request("http://localhost/api/question-pairs", {
         method: "POST",
-        headers: cookieHeader(hostSession),
+        headers: cookieHeader(hostCookie),
         body: JSON.stringify({
           promptA: { text: "Crew Prompt", target: "crew" },
           promptB: { text: "Impostor Prompt", target: "impostor" },
@@ -79,7 +88,7 @@ describe("game read route viewer prompts", () => {
     const started = await runCommand(
       new Request("http://localhost/api/games/viewer-lobby/commands", {
         method: "POST",
-        headers: cookieHeader(hostSession),
+        headers: cookieHeader(hostCookie),
         body: JSON.stringify({
           type: "start_round",
           payload: {
@@ -107,7 +116,7 @@ describe("game read route viewer prompts", () => {
     const p2View = await getLobby(
       new Request("http://localhost/api/games/viewer-lobby", {
         method: "GET",
-        headers: cookieHeader(p2Session),
+        headers: cookieHeader(p2Cookie),
       }),
       context("viewer-lobby"),
     );
@@ -119,7 +128,7 @@ describe("game read route viewer prompts", () => {
     const p3View = await getLobby(
       new Request("http://localhost/api/games/viewer-lobby", {
         method: "GET",
-        headers: cookieHeader(p3Session),
+        headers: cookieHeader(p3Cookie),
       }),
       context("viewer-lobby"),
     );

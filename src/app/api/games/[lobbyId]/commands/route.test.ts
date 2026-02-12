@@ -6,55 +6,61 @@ import { POST as createLobby } from "../../../lobbies/route";
 import { POST as joinLobby } from "../../../lobbies/[lobbyId]/join/route";
 import { POST as createQuestionPair } from "../../../question-pairs/route";
 import { resetRuntimeForTests } from "../../../../../server/runtime";
-import { encodeSessionCookieValue } from "../../../../../server/session/session";
+import { authCookieFor } from "../../../test-helpers/auth";
 
 function context(lobbyId: string) {
   return { params: Promise.resolve({ lobbyId }) };
 }
 
-const hostSession = { playerId: "p1", displayName: "Host" };
-const p2Session = { playerId: "p2", displayName: "Avery" };
-const p3Session = { playerId: "p3", displayName: "Riley" };
-const p4Session = { playerId: "p4", displayName: "Jordan" };
-const p5Session = { playerId: "p5", displayName: "Casey" };
+const hostUser = "p1";
+const p2User = "p2";
+const p3User = "p3";
+const p4User = "p4";
+const p5User = "p5";
 
-function cookieHeader(session?: { playerId: string; displayName: string }): Record<string, string> {
-  if (session === undefined) {
+function cookieHeader(cookie?: string): Record<string, string> {
+  if (cookie === undefined) {
     return { "Content-Type": "application/json" };
   }
 
   return {
     "Content-Type": "application/json",
-    Cookie: `sdg_session=${encodeSessionCookieValue(session)}`,
+    Cookie: cookie,
   };
 }
 
 async function postCommand(
   lobbyId: string,
   body: unknown,
-  session?: { playerId: string; displayName: string },
+  cookie?: string,
 ) {
   const request = new Request(`http://localhost/api/games/${lobbyId}/commands`, {
     method: "POST",
-    headers: cookieHeader(session),
+    headers: cookieHeader(cookie),
     body: JSON.stringify(body),
   });
   return runCommand(request, context(lobbyId));
 }
 
 async function setupLobby(lobbyId: string): Promise<void> {
+  const hostCookie = await authCookieFor(hostUser);
+  const p2Cookie = await authCookieFor(p2User);
+  const p3Cookie = await authCookieFor(p3User);
+  const p4Cookie = await authCookieFor(p4User);
+  const p5Cookie = await authCookieFor(p5User);
+
   const createRequest = new Request("http://localhost/api/lobbies", {
     method: "POST",
-    headers: cookieHeader(hostSession),
+    headers: cookieHeader(hostCookie),
     body: JSON.stringify({ lobbyId }),
   });
   const created = await createLobby(createRequest);
   expect(created.status).toBe(201);
 
-  for (const session of [p2Session, p3Session, p4Session, p5Session]) {
+  for (const cookie of [p2Cookie, p3Cookie, p4Cookie, p5Cookie]) {
     const joinRequest = new Request(`http://localhost/api/lobbies/${lobbyId}/join`, {
       method: "POST",
-      headers: cookieHeader(session),
+      headers: cookieHeader(cookie),
       body: JSON.stringify({}),
     });
     const joined = await joinLobby(joinRequest, { params: Promise.resolve({ lobbyId }) });
@@ -62,10 +68,10 @@ async function setupLobby(lobbyId: string): Promise<void> {
   }
 }
 
-async function createPairFor(session: { playerId: string; displayName: string }, textSeed: string): Promise<void> {
+async function createPairFor(cookie: string, textSeed: string): Promise<void> {
   const request = new Request("http://localhost/api/question-pairs", {
     method: "POST",
-    headers: cookieHeader(session),
+    headers: cookieHeader(cookie),
     body: JSON.stringify({
       promptA: { text: `${textSeed} crew`, target: "crew" },
       promptB: { text: `${textSeed} impostor`, target: "impostor" },
@@ -111,6 +117,7 @@ describe("game command route", () => {
 
   it("requires host privileges for host-only commands", async () => {
     await setupLobby("demo-lobby");
+    const p2Cookie = await authCookieFor(p2User);
 
     const response = await postCommand(
       "demo-lobby",
@@ -133,33 +140,19 @@ describe("game command route", () => {
           roleAssignment: { p2: "impostor", p3: "crew", p4: "crew", p5: "crew" },
         },
       },
-      p2Session,
+      p2Cookie,
     );
 
     expect(response.status).toBe(403);
   });
 
-  it("uses explicit session header over cookie for auth identity", async () => {
-    await setupLobby("demo-lobby");
-
-    const request = new Request("http://localhost/api/games/demo-lobby/commands", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: `sdg_session=${encodeSessionCookieValue(p2Session)}`,
-        "x-sdg-session": encodeSessionCookieValue(hostSession),
-      },
-      body: JSON.stringify({
-        type: "start_round_auto",
-        payload: {},
-      }),
-    });
-    const response = await runCommand(request, context("demo-lobby"));
-    expect(response.status).toBe(422);
-  });
-
   it("runs host start_round and player submit/cast commands using session identity", async () => {
     await setupLobby("demo-lobby");
+    const hostCookie = await authCookieFor(hostUser);
+    const p2Cookie = await authCookieFor(p2User);
+    const p3Cookie = await authCookieFor(p3User);
+    const p4Cookie = await authCookieFor(p4User);
+    const p5Cookie = await authCookieFor(p5User);
 
     const start = await postCommand(
       "demo-lobby",
@@ -182,28 +175,28 @@ describe("game command route", () => {
           roleAssignment: { p2: "impostor", p3: "crew", p4: "crew", p5: "crew" },
         },
       },
-      hostSession,
+      hostCookie,
     );
     expect(start.status).toBe(200);
 
-    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a2" } }, p2Session)).status).toBe(200);
-    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a3" } }, p3Session)).status).toBe(200);
-    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a4" } }, p4Session)).status).toBe(200);
-    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a5" } }, p5Session)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a2" } }, p2Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a3" } }, p3Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a4" } }, p4Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a5" } }, p5Cookie)).status).toBe(200);
 
-    expect((await postCommand("demo-lobby", { type: "reveal_question", payload: {} }, hostSession)).status).toBe(200);
-    expect((await postCommand("demo-lobby", { type: "start_discussion", payload: {} }, hostSession)).status).toBe(200);
-    expect((await postCommand("demo-lobby", { type: "end_discussion", payload: {} }, hostSession)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "reveal_question", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "start_discussion", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "end_discussion", payload: {} }, hostCookie)).status).toBe(200);
 
-    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p3" } }, p2Session)).status).toBe(200);
-    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p2" } }, p3Session)).status).toBe(200);
-    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p2" } }, p4Session)).status).toBe(200);
-    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p2" } }, p5Session)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p3" } }, p2Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p2" } }, p3Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p2" } }, p4Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p2" } }, p5Cookie)).status).toBe(200);
 
-    expect((await postCommand("demo-lobby", { type: "close_voting", payload: { allowMissingVotes: false } }, hostSession)).status).toBe(200);
-    expect((await postCommand("demo-lobby", { type: "finalize_round", payload: {} }, hostSession)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "close_voting", payload: { allowMissingVotes: false } }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "finalize_round", payload: {} }, hostCookie)).status).toBe(200);
 
-    const lobbyResponse = await getLobby(new Request("http://localhost/api/games/demo-lobby"), context("demo-lobby"));
+    const lobbyResponse = await getLobby(new Request("http://localhost/api/games/demo-lobby", { headers: cookieHeader(hostCookie) }), context("demo-lobby"));
     const lobbyJson = (await lobbyResponse.json()) as { completedRounds: number };
     expect(lobbyResponse.status).toBe(200);
     expect(lobbyJson.completedRounds).toBe(1);
@@ -211,8 +204,10 @@ describe("game command route", () => {
 
   it("runs start_round_auto using lobby question pool", async () => {
     await setupLobby("demo-lobby");
-    await createPairFor(hostSession, "host");
-    await createPairFor(p2Session, "p2");
+    const hostCookie = await authCookieFor(hostUser);
+    const p2Cookie = await authCookieFor(p2User);
+    await createPairFor(hostCookie, "host");
+    await createPairFor(p2Cookie, "p2");
 
     const start = await postCommand(
       "demo-lobby",
@@ -220,7 +215,7 @@ describe("game command route", () => {
         type: "start_round_auto",
         payload: {},
       },
-      hostSession,
+      hostCookie,
     );
 
     expect(start.status).toBe(200);
@@ -234,8 +229,10 @@ describe("game command route", () => {
 
   it("supports self leave_lobby and host remove_player", async () => {
     await setupLobby("demo-lobby");
+    const hostCookie = await authCookieFor(hostUser);
+    const p5Cookie = await authCookieFor(p5User);
 
-    const leaveResponse = await postCommand("demo-lobby", { type: "leave_lobby", payload: {} }, p5Session);
+    const leaveResponse = await postCommand("demo-lobby", { type: "leave_lobby", payload: {} }, p5Cookie);
     const leaveJson = (await leaveResponse.json()) as { state: { players: Array<{ id: string }> } };
     expect(leaveResponse.status).toBe(200);
     expect(leaveJson.state.players.some((p) => p.id === "p5")).toBe(false);
@@ -243,7 +240,7 @@ describe("game command route", () => {
     const removeResponse = await postCommand(
       "demo-lobby",
       { type: "remove_player", payload: { playerId: "p4" } },
-      hostSession,
+      hostCookie,
     );
     const removeJson = (await removeResponse.json()) as { state: { players: Array<{ id: string }> } };
     expect(removeResponse.status).toBe(200);
@@ -252,24 +249,29 @@ describe("game command route", () => {
 
   it("handles host disconnect transfer voting using session-bound voters", async () => {
     await setupLobby("demo-lobby");
+    const hostCookie = await authCookieFor(hostUser);
+    const p2Cookie = await authCookieFor(p2User);
+    const p3Cookie = await authCookieFor(p3User);
+    const p4Cookie = await authCookieFor(p4User);
+    const p5Cookie = await authCookieFor(p5User);
 
     expect(
       (
         await postCommand(
           "demo-lobby",
           { type: "set_player_connection", payload: { connected: false, nowMs: 1000 } },
-          hostSession,
+          hostCookie,
         )
       ).status,
     ).toBe(200);
 
-    await postCommand("demo-lobby", { type: "cast_host_transfer_vote", payload: { newHostId: "p3" } }, p2Session);
-    await postCommand("demo-lobby", { type: "cast_host_transfer_vote", payload: { newHostId: "p3" } }, p3Session);
-    await postCommand("demo-lobby", { type: "cast_host_transfer_vote", payload: { newHostId: "p3" } }, p4Session);
+    await postCommand("demo-lobby", { type: "cast_host_transfer_vote", payload: { newHostId: "p3" } }, p2Cookie);
+    await postCommand("demo-lobby", { type: "cast_host_transfer_vote", payload: { newHostId: "p3" } }, p3Cookie);
+    await postCommand("demo-lobby", { type: "cast_host_transfer_vote", payload: { newHostId: "p3" } }, p4Cookie);
     const transfer = await postCommand(
       "demo-lobby",
       { type: "cast_host_transfer_vote", payload: { newHostId: "p3" } },
-      p5Session,
+      p5Cookie,
     );
     const transferJson = (await transfer.json()) as {
       state: { players: Array<{ id: string; isHost: boolean }> };

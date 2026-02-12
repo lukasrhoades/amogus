@@ -1,48 +1,50 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { GET, POST } from "./route";
-import { encodeSessionCookieValue } from "../../../server/session/session";
+import { DELETE, GET, POST } from "./route";
+import { resetRuntimeForTests } from "../../../server/runtime";
 
 describe("session route", () => {
-  it("creates a session cookie and returns session payload", async () => {
+  beforeEach(() => {
+    process.env.GAME_SESSION_REPO = "memory";
+    resetRuntimeForTests();
+  });
+
+  it("registers user, sets session cookie, and returns session payload", async () => {
     const request = new Request("http://localhost/api/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ displayName: "Lukas" }),
+      body: JSON.stringify({ mode: "register", username: "lukas", password: "password123" }),
     });
 
     const response = await POST(request);
-    const json = (await response.json()) as { session: { playerId: string; displayName: string } };
+    const json = (await response.json()) as { session: { userId: string; username: string } };
 
     expect(response.status).toBe(200);
-    expect(json.session.displayName).toBe("Lukas");
-    expect(json.session.playerId.startsWith("p_")).toBe(true);
+    expect(json.session.username).toBe("lukas");
+    expect(json.session.userId).toBe("lukas");
     expect(response.headers.get("set-cookie")?.includes("sdg_session=")).toBe(true);
   });
 
-  it("returns null when no session cookie exists", async () => {
-    const response = await GET(new Request("http://localhost/api/session"));
-    const json = (await response.json()) as { session: null };
-
-    expect(response.status).toBe(200);
-    expect(json.session).toBeNull();
-  });
-
-  it("prefers explicit session header over cookie", async () => {
-    const headerSession = { playerId: "p_header", displayName: "Header" };
-    const cookieSession = { playerId: "p_cookie", displayName: "Cookie" };
-
-    const response = await GET(
+  it("returns current authenticated session for cookie token", async () => {
+    const auth = await POST(
       new Request("http://localhost/api/session", {
-        headers: {
-          "x-sdg-session": encodeSessionCookieValue(headerSession),
-          Cookie: `sdg_session=${encodeSessionCookieValue(cookieSession)}`,
-        },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "register", username: "avery", password: "password123" }),
       }),
     );
-    const json = (await response.json()) as { session: { playerId: string; displayName: string } | null };
+    const cookie = auth.headers.get("set-cookie")?.split(";")[0] ?? "";
+
+    const response = await GET(new Request("http://localhost/api/session", { headers: { Cookie: cookie } }));
+    const json = (await response.json()) as { session: { userId: string; username: string } | null };
 
     expect(response.status).toBe(200);
-    expect(json.session?.playerId).toBe("p_header");
+    expect(json.session?.userId).toBe("avery");
+  });
+
+  it("logs out and clears cookie", async () => {
+    const response = await DELETE(new Request("http://localhost/api/session", { method: "DELETE" }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")?.includes("Max-Age=0")).toBe(true);
   });
 });

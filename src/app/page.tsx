@@ -2,11 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-const SESSION_STORAGE_KEY = "sdg.session.override";
-
 type Session = {
-  playerId: string;
-  displayName: string;
+  userId: string;
+  username: string;
 };
 
 type LobbySnapshot = {
@@ -73,9 +71,11 @@ type CommandPayload =
   | { type: "leave_lobby"; payload: Record<string, never> };
 
 export default function HomePage() {
-  const [message, setMessage] = useState<string>("Create a session to begin.");
+  const [message, setMessage] = useState<string>("Log in to begin.");
   const [session, setSession] = useState<Session | null>(null);
-  const [sessionDisplayName, setSessionDisplayName] = useState<string>("Player");
+  const [authMode, setAuthMode] = useState<"register" | "login">("register");
+  const [authUsername, setAuthUsername] = useState<string>("player1");
+  const [authPassword, setAuthPassword] = useState<string>("password123");
 
   const [snapshot, setSnapshot] = useState<LobbySnapshot | null>(null);
   const [activeLobbyId, setActiveLobbyId] = useState<string>("demo-lobby");
@@ -96,47 +96,6 @@ export default function HomePage() {
     }>
   >([]);
 
-  function readSessionToken(): string | null {
-    if (typeof window === "undefined") {
-      return null;
-    }
-    const value = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    return value === null || value.trim() === "" ? null : value;
-  }
-
-  function writeSessionTokenFromSession(nextSession: Session): void {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const encoded = btoa(JSON.stringify(nextSession))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/g, "");
-    window.localStorage.setItem(SESSION_STORAGE_KEY, encoded);
-  }
-
-  function authHeaders(base?: HeadersInit): HeadersInit {
-    const headers = new Headers(base);
-    const token = readSessionToken();
-    if (token !== null) {
-      headers.set("x-sdg-session", token);
-    }
-    return headers;
-  }
-
-  function withSessionQuery(path: string): string {
-    if (typeof window === "undefined") {
-      return path;
-    }
-    const token = readSessionToken();
-    if (token === null) {
-      return path;
-    }
-    const url = new URL(path, window.location.origin);
-    url.searchParams.set("sdg_session", token);
-    return `${url.pathname}${url.search}`;
-  }
-
   useEffect(() => {
     const run = async () => {
       const response = await fetch("/api/session", { method: "GET" });
@@ -146,8 +105,7 @@ export default function HomePage() {
       const payload = (await response.json()) as { session: Session | null };
       if (payload.session !== null) {
         setSession(payload.session);
-        setSessionDisplayName(payload.session.displayName);
-        writeSessionTokenFromSession(payload.session);
+        setAuthUsername(payload.session.username);
       }
     };
 
@@ -159,7 +117,11 @@ export default function HomePage() {
       return;
     }
 
-    const source = new EventSource(withSessionQuery(`/api/games/${activeLobbyId}/events`));
+    if (session === null) {
+      return;
+    }
+
+    const source = new EventSource(`/api/games/${activeLobbyId}/events`);
     source.onopen = () => {
       setRealtimeConnected(true);
     };
@@ -181,24 +143,28 @@ export default function HomePage() {
       source.close();
       setRealtimeConnected(false);
     };
-  }, [activeLobbyId]);
+  }, [activeLobbyId, session]);
 
-  async function createSession() {
+  async function authenticate() {
     const response = await fetch("/api/session", {
       method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ displayName: sessionDisplayName }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: authMode,
+        username: authUsername,
+        password: authPassword,
+      }),
     });
 
     if (!response.ok) {
-      setMessage("Failed to create session.");
+      const payload = (await response.json()) as { error: string; message?: string };
+      setMessage(`Auth failed: ${payload.error} (${payload.message ?? ""})`);
       return;
     }
 
     const payload = (await response.json()) as { session: Session };
-    writeSessionTokenFromSession(payload.session);
     setSession(payload.session);
-    setMessage(`Session ready: ${payload.session.displayName} (${payload.session.playerId})`);
+    setMessage(`Logged in as ${payload.session.username} (${payload.session.userId})`);
     await loadQuestionPairs();
   }
 
@@ -211,7 +177,7 @@ export default function HomePage() {
   async function createLobby() {
     const response = await fetch("/api/lobbies", {
       method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         lobbyId: createLobbyId,
       }),
@@ -231,7 +197,7 @@ export default function HomePage() {
   async function joinLobby() {
     const response = await fetch(`/api/lobbies/${activeLobbyId}/join`, {
       method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
     });
 
@@ -248,7 +214,6 @@ export default function HomePage() {
   async function deleteLobby() {
     const response = await fetch(`/api/lobbies/${activeLobbyId}`, {
       method: "DELETE",
-      headers: authHeaders(),
     });
     if (!response.ok) {
       const payload = (await response.json()) as { error: string; message?: string };
@@ -260,7 +225,7 @@ export default function HomePage() {
   }
 
   async function loadLobby(lobbyId: string = activeLobbyId) {
-    const response = await fetch(`/api/games/${lobbyId}`, { method: "GET", headers: authHeaders() });
+    const response = await fetch(`/api/games/${lobbyId}`, { method: "GET" });
     if (!response.ok) {
       const payload = (await response.json()) as { message?: string };
       setMessage(payload.message ?? "Failed to load lobby.");
@@ -276,9 +241,9 @@ export default function HomePage() {
   async function runCommand(command: CommandPayload) {
     const response = await fetch(`/api/games/${activeLobbyId}/commands`, {
       method: "POST",
-      headers: authHeaders({
+      headers: {
         "Content-Type": "application/json",
-      }),
+      },
       body: JSON.stringify(command),
     });
 
@@ -298,7 +263,7 @@ export default function HomePage() {
   }
 
   async function loadQuestionPairs() {
-    const response = await fetch("/api/question-pairs", { method: "GET", headers: authHeaders() });
+    const response = await fetch("/api/question-pairs", { method: "GET" });
     if (!response.ok) {
       setQuestionPairs([]);
       return;
@@ -316,7 +281,7 @@ export default function HomePage() {
   async function createQuestionPair() {
     const response = await fetch("/api/question-pairs", {
       method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         promptA: { text: promptAText, target: promptATarget },
         promptB: { text: promptBText, target: promptBTarget },
@@ -336,7 +301,7 @@ export default function HomePage() {
   }
 
   async function deleteQuestionPair(pairId: string) {
-    const response = await fetch(`/api/question-pairs/${pairId}`, { method: "DELETE", headers: authHeaders() });
+    const response = await fetch(`/api/question-pairs/${pairId}`, { method: "DELETE" });
     if (!response.ok) {
       setMessage("Delete pair failed.");
       return;
@@ -349,16 +314,27 @@ export default function HomePage() {
     <main>
       <div className="container">
         <h1>Social Deduction Games</h1>
-        <p>Identity-bound prototype: actions use session player identity from secure cookie.</p>
+        <p>Login-based prototype: actions use server-side authenticated identity.</p>
 
-        <h2>Session</h2>
+        <h2>Auth</h2>
         <p>
-          Display Name: <input value={sessionDisplayName} onChange={(e) => setSessionDisplayName(e.target.value)} />{" "}
-          <button type="button" onClick={createSession}>
-            Create Session
+          Mode:{" "}
+          <select value={authMode} onChange={(e) => setAuthMode(e.target.value as "register" | "login")}>
+            <option value="register">register</option>
+            <option value="login">login</option>
+          </select>{" "}
+          Username: <input value={authUsername} onChange={(e) => setAuthUsername(e.target.value)} />{" "}
+          Password:{" "}
+          <input
+            type="password"
+            value={authPassword}
+            onChange={(e) => setAuthPassword(e.target.value)}
+          />{" "}
+          <button type="button" onClick={authenticate}>
+            Submit
           </button>
         </p>
-        <p>{session === null ? "No session." : `Session: ${session.displayName} (${session.playerId})`}</p>
+        <p>{session === null ? "No session." : `Session: ${session.username} (${session.userId})`}</p>
         <p>Realtime: {realtimeConnected ? "connected" : "disconnected"}</p>
 
         <h2>Lobby Setup</h2>

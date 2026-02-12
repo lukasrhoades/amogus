@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRuntime } from "../../../server/runtime";
-import { readSessionFromRequest } from "../../../server/session/session";
+import { requireSession } from "../../../server/session/require-session";
 
 const promptTargetSchema = z.union([z.literal("crew"), z.literal("impostor"), z.literal("both")]);
 
@@ -18,18 +18,18 @@ const createQuestionPairSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const session = readSessionFromRequest(request);
+  const session = await requireSession(request);
   if (session === null) {
     return NextResponse.json({ error: "no_session", message: "Create a session before listing question pairs" }, { status: 401 });
   }
 
   const runtime = getRuntime();
-  const pairs = await runtime.questionPairService.listOwn(session.playerId);
+  const pairs = await runtime.questionPairService.listOwn(session.userId);
   return NextResponse.json({ ok: true, pairs });
 }
 
 export async function POST(request: Request) {
-  const session = readSessionFromRequest(request);
+  const session = await requireSession(request);
   if (session === null) {
     return NextResponse.json({ error: "no_session", message: "Create a session before creating question pairs" }, { status: 401 });
   }
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
 
   const runtime = getRuntime();
   const result = await runtime.questionPairService.createOwn({
-    ownerId: session.playerId,
+    ownerId: session.userId,
     promptA: {
       text: parsed.data.promptA.text.trim(),
       target: parsed.data.promptA.target,
