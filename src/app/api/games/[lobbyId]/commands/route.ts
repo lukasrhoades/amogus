@@ -245,6 +245,29 @@ async function runCommand(lobbyId: string, command: Command, sessionPlayerId: st
   }
 }
 
+async function getTieCandidates(lobbyId: string): Promise<string[]> {
+  const runtime = getRuntime();
+  const state = await runtime.gameService.get(lobbyId);
+  if (!state.ok || state.value.currentRound === null || state.value.currentRound.phase !== "voting") {
+    return [];
+  }
+
+  const { activePlayerIds, votes } = state.value.currentRound;
+  const tally = activePlayerIds.reduce<Record<string, number>>((acc, playerId) => {
+    acc[playerId] = 0;
+    return acc;
+  }, Object.create(null) as Record<string, number>);
+
+  Object.values(votes).forEach((targetId) => {
+    if (targetId !== undefined && tally[targetId] !== undefined) {
+      tally[targetId] += 1;
+    }
+  });
+
+  const maxVotes = Math.max(...Object.values(tally));
+  return Object.keys(tally).filter((playerId) => tally[playerId] === maxVotes);
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ lobbyId: string }> },
@@ -284,10 +307,13 @@ export async function POST(
 
   const result = await runCommand(params.data.lobbyId, parsed.data, session.userId);
   if (!result.ok) {
+    const tieCandidates =
+      result.error.code === "missing_tiebreak" ? await getTieCandidates(params.data.lobbyId) : undefined;
     return NextResponse.json(
       {
         error: result.error.code,
         message: result.error.message,
+        tieCandidates,
       },
       { status: domainErrorStatus(result.error.code) },
     );

@@ -280,4 +280,65 @@ describe("game command route", () => {
     expect(transfer.status).toBe(200);
     expect(transferJson.state.players.find((p) => p.id === "p3")?.isHost).toBe(true);
   });
+
+  it("returns tieCandidates when close_voting requires tiebreak", async () => {
+    await setupLobby("demo-lobby");
+    const hostCookie = await authCookieFor(hostUser);
+    const p2Cookie = await authCookieFor(p2User);
+    const p3Cookie = await authCookieFor(p3User);
+    const p4Cookie = await authCookieFor(p4User);
+    const p5Cookie = await authCookieFor(p5User);
+
+    expect(
+      (
+        await postCommand(
+          "demo-lobby",
+          {
+            type: "start_round",
+            payload: {
+              selection: {
+                questionPair: {
+                  id: "q4",
+                  ownerId: "p1",
+                  promptA: { text: "Q1", target: "crew" },
+                  promptB: { text: "Q2", target: "impostor" },
+                },
+                impostorCount: 1,
+              },
+              roundPolicy: {
+                eligibilityEnabled: true,
+                allowVoteChanges: true,
+              },
+              roleAssignment: { p2: "impostor", p3: "crew", p4: "crew", p5: "crew" },
+            },
+          },
+          hostCookie,
+        )
+      ).status,
+    ).toBe(200);
+
+    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a2" } }, p2Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a3" } }, p3Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a4" } }, p4Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "submit_answer", payload: { answer: "a5" } }, p5Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "reveal_question", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "start_discussion", payload: {} }, hostCookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "end_discussion", payload: {} }, hostCookie)).status).toBe(200);
+
+    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p2" } }, p3Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p2" } }, p4Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p3" } }, p2Cookie)).status).toBe(200);
+    expect((await postCommand("demo-lobby", { type: "cast_vote", payload: { targetId: "p3" } }, p5Cookie)).status).toBe(200);
+
+    const closeVoting = await postCommand(
+      "demo-lobby",
+      { type: "close_voting", payload: { allowMissingVotes: false } },
+      hostCookie,
+    );
+    const closeVotingJson = (await closeVoting.json()) as { error: string; tieCandidates?: string[] };
+
+    expect(closeVoting.status).toBe(400);
+    expect(closeVotingJson.error).toBe("missing_tiebreak");
+    expect(closeVotingJson.tieCandidates?.slice().sort()).toEqual(["p2", "p3"]);
+  });
 });

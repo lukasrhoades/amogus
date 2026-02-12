@@ -103,6 +103,7 @@ export default function HomePage() {
       promptB: { text: string; target: "crew" | "impostor" | "both" };
     }>
   >([]);
+  const [tieCandidates, setTieCandidates] = useState<string[]>([]);
 
   useEffect(() => {
     const run = async () => {
@@ -256,14 +257,44 @@ export default function HomePage() {
     });
 
     if (!response.ok) {
-      const payload = (await response.json()) as { error: string; message: string };
+      const payload = (await response.json()) as { error: string; message: string; tieCandidates?: string[] };
+      if (payload.error === "missing_tiebreak") {
+        setTieCandidates(payload.tieCandidates ?? []);
+      }
       setMessage(`Command failed: ${payload.error} (${payload.message})`);
       return;
     }
 
     const payload = (await response.json()) as { state: LobbySnapshot };
     setSnapshot(payload.state);
+    setTieCandidates([]);
     setMessage(`Command succeeded: ${command.type}`);
+  }
+
+  async function resolveTie(choice: "auto" | string) {
+    const candidates = tieCandidates;
+    if (candidates.length < 2) {
+      setMessage("Tie resolution unavailable.");
+      return;
+    }
+
+    const loserId =
+      choice === "auto"
+        ? candidates[Math.floor(Math.random() * candidates.length)]
+        : choice;
+
+    if (loserId === undefined) {
+      setMessage("Tie resolution failed: no candidate selected.");
+      return;
+    }
+
+    await runCommand({
+      type: "close_voting",
+      payload: {
+        allowMissingVotes: false,
+        tieBreakLoserId: loserId,
+      },
+    });
   }
 
   async function startAutoRound() {
@@ -506,6 +537,26 @@ export default function HomePage() {
             </button>
           ) : null}
         </p>
+        {canHostCloseVoting && tieCandidates.length >= 2 ? (
+          <div>
+            <p>Tie detected. Resolve manually or auto-randomize:</p>
+            <p>
+              <button type="button" onClick={() => resolveTie("auto")}>
+                Auto Resolve Randomly
+              </button>
+            </p>
+            <p>
+              {tieCandidates.map((playerId) => {
+                const displayName = snapshot?.players.find((player) => player.id === playerId)?.displayName ?? playerId;
+                return (
+                  <button key={playerId} type="button" onClick={() => resolveTie(playerId)}>
+                    Eliminate {displayName}
+                  </button>
+                );
+              })}
+            </p>
+          </div>
+        ) : null}
 
         <h2>My Question Pairs</h2>
         <p>
