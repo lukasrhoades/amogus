@@ -23,6 +23,7 @@ export async function GET(
       const encoder = new TextEncoder();
       let closed = false;
       let heartbeat: ReturnType<typeof setInterval> | null = null;
+      let discussionTimer: ReturnType<typeof setInterval> | null = null;
       let unsubscribe: (() => void) | null = null;
 
       const cleanup = () => {
@@ -33,6 +34,10 @@ export async function GET(
         if (heartbeat !== null) {
           clearInterval(heartbeat);
           heartbeat = null;
+        }
+        if (discussionTimer !== null) {
+          clearInterval(discussionTimer);
+          discussionTimer = null;
         }
         unsubscribe?.();
         unsubscribe = null;
@@ -66,6 +71,9 @@ export async function GET(
       heartbeat = setInterval(() => {
         safeEnqueue(": heartbeat\n\n");
       }, 15000);
+      discussionTimer = setInterval(() => {
+        void runtime.gameService.applyDiscussionTimeout(lobbyId, Date.now());
+      }, 1000);
 
       request.signal.addEventListener("abort", () => {
         cleanup();

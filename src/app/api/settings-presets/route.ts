@@ -19,6 +19,9 @@ const configSchema = z.object({
     crewVotedOutPenaltyEnabled: z.boolean(),
     crewVotedOutPenaltyPoints: z.number().int().max(0),
   }),
+  discussion: z.object({
+    timerSeconds: z.number().int().min(10).max(600).nullable(),
+  }),
 });
 
 const savePresetSchema = z.object({

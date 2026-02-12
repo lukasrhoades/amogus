@@ -27,6 +27,9 @@ const gameSettingsUpdateSchema = z.object({
     crewVotedOutPenaltyEnabled: z.boolean(),
     crewVotedOutPenaltyPoints: z.number().int().max(0),
   }),
+  discussion: z.object({
+    timerSeconds: z.number().int().min(10).max(600).nullable(),
+  }),
 });
 
 const commandSchema = z.discriminatedUnion("type", [
@@ -89,6 +92,12 @@ const commandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("end_discussion"),
     payload: z.object({}),
+  }),
+  z.object({
+    type: z.literal("extend_discussion"),
+    payload: z.object({
+      addSeconds: z.number().int().min(5).max(300),
+    }),
   }),
   z.object({
     type: z.literal("cast_vote"),
@@ -195,6 +204,7 @@ function isHostOnlyCommand(commandType: Command["type"]): boolean {
     commandType === "reveal_question" ||
     commandType === "reveal_next_answer" ||
     commandType === "start_discussion" ||
+    commandType === "extend_discussion" ||
     commandType === "end_discussion" ||
     commandType === "close_voting" ||
     commandType === "finalize_round" ||
@@ -207,6 +217,10 @@ function isHostOnlyCommand(commandType: Command["type"]): boolean {
 async function runCommand(lobbyId: string, command: Command, sessionPlayerId: string) {
   const runtime = getRuntime();
   const service = runtime.gameService;
+  const timeoutApplied = await service.applyDiscussionTimeout(lobbyId, Date.now());
+  if (!timeoutApplied.ok) {
+    return timeoutApplied;
+  }
 
   if (isHostOnlyCommand(command.type)) {
     const state = await service.get(lobbyId);
@@ -237,6 +251,8 @@ async function runCommand(lobbyId: string, command: Command, sessionPlayerId: st
       return service.revealQuestion(lobbyId);
     case "start_discussion":
       return service.startDiscussion(lobbyId);
+    case "extend_discussion":
+      return service.extendDiscussion(lobbyId, command.payload);
     case "reveal_next_answer":
       return service.revealNextAnswer(lobbyId);
     case "end_discussion":

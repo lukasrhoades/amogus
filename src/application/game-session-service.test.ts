@@ -246,11 +246,62 @@ describe("GameSessionService", () => {
         crewVotedOutPenaltyEnabled: false,
         crewVotedOutPenaltyPoints: -1,
       },
+      discussion: {
+        timerSeconds: 120,
+      },
     });
 
     expect(updated.ok).toBe(true);
     if (!updated.ok) return;
     expect(updated.value.settings.plannedRounds).toBe(12);
     expect(updated.value.settings.questionReuseEnabled).toBe(true);
+  });
+
+  it("auto-ends discussion when timer deadline is reached", async () => {
+    const service = new GameSessionService(new InMemoryGameSessionRepo());
+    const initial = createInitialGameState({
+      lobbyId: "l6",
+      players: players(4),
+      settings: {
+        ...defaultSettings(),
+        discussion: {
+          timerSeconds: 30,
+          watchdogSeconds: 600,
+          pausedWatchdogSeconds: 3600,
+        },
+      },
+    });
+    await service.create(initial);
+
+    let state = await service.startRound("l6", {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "impostor"],
+        ["p2", "crew"],
+        ["p3", "crew"],
+        ["p4", "crew"],
+      ]),
+    });
+    if (!state.ok) throw new Error(state.error.message);
+
+    for (const playerId of ["p1", "p2", "p3", "p4"] as const) {
+      state = await service.submitAnswer("l6", playerId, `answer-${playerId}`);
+      if (!state.ok) throw new Error(state.error.message);
+    }
+
+    state = await service.revealQuestion("l6");
+    if (!state.ok) throw new Error(state.error.message);
+    for (const _ of ["a", "b", "c", "d"] as const) {
+      state = await service.revealNextAnswer("l6");
+      if (!state.ok) throw new Error(state.error.message);
+    }
+    state = await service.startDiscussion("l6", 1000);
+    if (!state.ok) throw new Error(state.error.message);
+
+    const timedOut = await service.applyDiscussionTimeout("l6", 31000);
+    expect(timedOut.ok).toBe(true);
+    if (!timedOut.ok) return;
+    expect(timedOut.value.phase).toBe("voting");
   });
 });

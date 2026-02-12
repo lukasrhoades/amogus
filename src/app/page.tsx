@@ -25,6 +25,9 @@ type SettingsPreset = {
       crewVotedOutPenaltyEnabled: boolean;
       crewVotedOutPenaltyPoints: number;
     };
+    discussion: {
+      timerSeconds: number | null;
+    };
   };
 };
 
@@ -49,6 +52,9 @@ type LobbySnapshot = {
       crewVotedOutPenaltyEnabled: boolean;
       crewVotedOutPenaltyPoints: number;
     };
+    discussion: {
+      timerSeconds: number | null;
+    };
   };
   players: Array<{
     id: string;
@@ -67,6 +73,7 @@ type LobbySnapshot = {
     answersCount: number;
     answersSubmittedBy: string[];
     revealedAnswerCount: number;
+    discussionDeadlineMs: number | null;
     votesCount: number;
     votesSubmittedBy: string[];
     eliminatedPlayerId: string | null;
@@ -111,6 +118,7 @@ type CommandPayload =
   | { type: "submit_answer"; payload: { answer: string } }
   | { type: "reveal_question"; payload: Record<string, never> }
   | { type: "start_discussion"; payload: Record<string, never> }
+  | { type: "extend_discussion"; payload: { addSeconds: number } }
   | { type: "reveal_next_answer"; payload: Record<string, never> }
   | { type: "end_discussion"; payload: Record<string, never> }
   | { type: "cast_vote"; payload: { targetId: string } }
@@ -132,6 +140,9 @@ type CommandPayload =
           crewVotesOutImpostorPoints: number;
           crewVotedOutPenaltyEnabled: boolean;
           crewVotedOutPenaltyPoints: number;
+        };
+        discussion: {
+          timerSeconds: number | null;
         };
       };
     }
@@ -176,7 +187,9 @@ export default function HomePage() {
   const [settingsCrewCatchPoints, setSettingsCrewCatchPoints] = useState<number>(1);
   const [settingsPenaltyEnabled, setSettingsPenaltyEnabled] = useState<boolean>(true);
   const [settingsPenaltyPoints, setSettingsPenaltyPoints] = useState<number>(-1);
+  const [settingsDiscussionTimerSeconds, setSettingsDiscussionTimerSeconds] = useState<number>(0);
   const [roundEligibilityEnabled, setRoundEligibilityEnabled] = useState<boolean>(true);
+  const [nowMs, setNowMs] = useState<number>(Date.now());
 
   useEffect(() => {
     const run = async () => {
@@ -257,6 +270,11 @@ export default function HomePage() {
       void loadSettingsPresets();
     }
   }, [session]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   async function createLobby() {
     const response = await fetch("/api/lobbies", {
@@ -502,6 +520,7 @@ export default function HomePage() {
     setSettingsCrewCatchPoints(snapshot.settings.scoring.crewVotesOutImpostorPoints);
     setSettingsPenaltyEnabled(snapshot.settings.scoring.crewVotedOutPenaltyEnabled);
     setSettingsPenaltyPoints(snapshot.settings.scoring.crewVotedOutPenaltyPoints);
+    setSettingsDiscussionTimerSeconds(snapshot.settings.discussion.timerSeconds ?? 0);
     setRoundEligibilityEnabled(snapshot.players.length >= 5);
   }, [snapshot]);
 
@@ -527,6 +546,9 @@ export default function HomePage() {
           crewVotedOutPenaltyEnabled: settingsPenaltyEnabled,
           crewVotedOutPenaltyPoints: settingsPenaltyPoints,
         },
+        discussion: {
+          timerSeconds: settingsDiscussionTimerSeconds > 0 ? settingsDiscussionTimerSeconds : null,
+        },
       },
     });
   }
@@ -542,6 +564,7 @@ export default function HomePage() {
     setSettingsCrewCatchPoints(config.scoring.crewVotesOutImpostorPoints);
     setSettingsPenaltyEnabled(config.scoring.crewVotedOutPenaltyEnabled);
     setSettingsPenaltyPoints(config.scoring.crewVotedOutPenaltyPoints);
+    setSettingsDiscussionTimerSeconds(config.discussion.timerSeconds ?? 0);
   }
 
   async function loadSelectedPresetToForm() {
@@ -574,6 +597,9 @@ export default function HomePage() {
             crewVotesOutImpostorPoints: settingsCrewCatchPoints,
             crewVotedOutPenaltyEnabled: settingsPenaltyEnabled,
             crewVotedOutPenaltyPoints: settingsPenaltyPoints,
+          },
+          discussion: {
+            timerSeconds: settingsDiscussionTimerSeconds > 0 ? settingsDiscussionTimerSeconds : null,
           },
         },
       }),
@@ -819,6 +845,16 @@ export default function HomePage() {
               />
             </p>
             <p>
+              Discussion timer seconds (0 = no timer):{" "}
+              <input
+                type="number"
+                min={0}
+                max={600}
+                value={settingsDiscussionTimerSeconds}
+                onChange={(e) => setSettingsDiscussionTimerSeconds(Number(e.target.value))}
+              />
+            </p>
+            <p>
               Round eligibility (for next auto-start round):{" "}
               <select
                 value={roundEligibilityEnabled ? "on" : "off"}
@@ -882,6 +918,14 @@ export default function HomePage() {
             ))}
           </div>
         ) : null}
+        {round?.phase === "discussion" ? (
+          <p>
+            Discussion timer:{" "}
+            {round.discussionDeadlineMs === null
+              ? "No timer (host ends discussion)"
+              : `${Math.max(0, Math.ceil((round.discussionDeadlineMs - nowMs) / 1000))}s remaining`}
+          </p>
+        ) : null}
 
         <h2>Actions</h2>
         <p>{message}</p>
@@ -920,6 +964,17 @@ export default function HomePage() {
             <button type="button" onClick={() => runCommand({ type: "end_discussion", payload: {} })}>
               End Discussion (Host)
             </button>
+          ) : null}
+          {isHost && round?.phase === "discussion" && round.discussionDeadlineMs !== null ? (
+            <>
+              {" "}
+              <button type="button" onClick={() => runCommand({ type: "extend_discussion", payload: { addSeconds: 30 } })}>
+                +30s
+              </button>{" "}
+              <button type="button" onClick={() => runCommand({ type: "extend_discussion", payload: { addSeconds: 60 } })}>
+                +60s
+              </button>
+            </>
           ) : null}
         </p>
         {round?.phase === "reveal" ? (

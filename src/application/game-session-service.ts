@@ -13,6 +13,7 @@ import {
 } from "../domain/game/types";
 import {
   applyHostDisconnectTimeout,
+  applyDiscussionTimeout,
   castHostTransferVote,
   cancelCurrentRoundBeforeReveal,
   castVote,
@@ -23,6 +24,7 @@ import {
   setPlayerConnection,
   revealNextAnswer,
   revealQuestion,
+  extendDiscussion,
   extendHostDisconnectPause,
   startDiscussion,
   startRound,
@@ -307,13 +309,13 @@ export class GameSessionService {
     return ok(next.value);
   }
 
-  async startDiscussion(lobbyId: LobbyId): Promise<ServiceResult<GameState>> {
+  async startDiscussion(lobbyId: LobbyId, nowMs: number = Date.now()): Promise<ServiceResult<GameState>> {
     const stateResult = await this.get(lobbyId);
     if (!stateResult.ok) {
       return stateResult;
     }
 
-    const next = startDiscussion(stateResult.value);
+    const next = startDiscussion(stateResult.value, nowMs);
     if (!next.ok) {
       return fromDomain(next);
     }
@@ -348,6 +350,41 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
+    await this.saveAndNotify(next.value);
+    return ok(next.value);
+  }
+
+  async extendDiscussion(
+    lobbyId: LobbyId,
+    input: { addSeconds: number },
+  ): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+    const next = extendDiscussion(stateResult.value, input);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+    await this.saveAndNotify(next.value);
+    return ok(next.value);
+  }
+
+  async applyDiscussionTimeout(
+    lobbyId: LobbyId,
+    nowMs: number = Date.now(),
+  ): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+    const next = applyDiscussionTimeout(stateResult.value, nowMs);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+    if (next.value === stateResult.value) {
+      return ok(next.value);
+    }
     await this.saveAndNotify(next.value);
     return ok(next.value);
   }
@@ -526,6 +563,9 @@ export class GameSessionService {
         crewVotesOutImpostorPoints: number;
         crewVotedOutPenaltyEnabled: boolean;
         crewVotedOutPenaltyPoints: number;
+      };
+      discussion: {
+        timerSeconds: number | null;
       };
     },
   ): Promise<ServiceResult<GameState>> {

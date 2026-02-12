@@ -14,6 +14,8 @@ import {
   revealQuestion,
   startDiscussion,
   startRound,
+  applyDiscussionTimeout,
+  extendDiscussion,
   updateSettings,
   extendHostDisconnectPause,
   removePlayer,
@@ -665,6 +667,9 @@ describe("settings updates", () => {
         crewVotedOutPenaltyEnabled: false,
         crewVotedOutPenaltyPoints: -1,
       },
+      discussion: {
+        timerSeconds: 120,
+      },
     });
 
     expect(updated.ok).toBe(true);
@@ -692,10 +697,87 @@ describe("settings updates", () => {
         crewVotedOutPenaltyEnabled: true,
         crewVotedOutPenaltyPoints: -1,
       },
+      discussion: {
+        timerSeconds: null,
+      },
     });
 
     expect(updated.ok).toBe(false);
     if (updated.ok) return;
     expect(updated.error.code).toBe("invalid_settings");
+  });
+});
+
+describe("discussion timer", () => {
+  it("sets discussion deadline and auto-ends on timeout", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings({
+        discussion: {
+          timerSeconds: 30,
+          watchdogSeconds: 600,
+          pausedWatchdogSeconds: 3600,
+        },
+      }),
+    });
+
+    let state = expectOk(
+      startRound(base, {
+        selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+        roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+        roleAssignment: assignment([
+          ["p1", "crew"],
+          ["p2", "impostor"],
+          ["p3", "crew"],
+          ["p4", "crew"],
+        ]),
+      }),
+    );
+    state = submitAllAnswers(state);
+    state = expectOk(revealQuestion(state));
+    state = revealAllAnswers(state);
+    state = expectOk(startDiscussion(state, 1000));
+    expect(state.currentRound?.discussionDeadlineMs).toBe(31000);
+
+    const beforeTimeout = expectOk(applyDiscussionTimeout(state, 30000));
+    expect(beforeTimeout.phase).toBe("discussion");
+
+    const timedOut = expectOk(applyDiscussionTimeout(state, 31000));
+    expect(timedOut.phase).toBe("voting");
+  });
+
+  it("extends discussion timer for host pacing", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings({
+        discussion: {
+          timerSeconds: 30,
+          watchdogSeconds: 600,
+          pausedWatchdogSeconds: 3600,
+        },
+      }),
+    });
+
+    let state = expectOk(
+      startRound(base, {
+        selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+        roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+        roleAssignment: assignment([
+          ["p1", "crew"],
+          ["p2", "impostor"],
+          ["p3", "crew"],
+          ["p4", "crew"],
+        ]),
+      }),
+    );
+    state = submitAllAnswers(state);
+    state = expectOk(revealQuestion(state));
+    state = revealAllAnswers(state);
+    state = expectOk(startDiscussion(state, 5000));
+    state = expectOk(extendDiscussion(state, { addSeconds: 60 }));
+
+    expect(state.currentRound?.discussionDeadlineMs).toBe(95000);
   });
 });

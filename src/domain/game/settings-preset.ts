@@ -13,6 +13,9 @@ export type SettingsPresetConfig = {
     crewVotedOutPenaltyEnabled: boolean;
     crewVotedOutPenaltyPoints: number;
   };
+  discussion: {
+    timerSeconds: number | null;
+  };
 };
 
 export type SettingsPreset = {

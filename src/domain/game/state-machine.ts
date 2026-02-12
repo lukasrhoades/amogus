@@ -45,6 +45,9 @@ type UpdateSettingsInput = {
     crewVotedOutPenaltyEnabled: boolean;
     crewVotedOutPenaltyPoints: number;
   };
+  discussion: {
+    timerSeconds: number | null;
+  };
 };
 
 function ok<T>(value: T): Result<T> {
@@ -203,6 +206,7 @@ export function startRound(state: GameState, input: StartRoundInput): Result<Gam
     roles: input.roleAssignment,
     answers: {},
     revealedAnswerCount: 0,
+    discussionDeadlineMs: null,
     votes: {},
     eliminatedPlayerId: null,
   };
@@ -261,6 +265,14 @@ export function updateSettings(state: GameState, input: UpdateSettingsInput): Re
   if (input.scoring.crewVotedOutPenaltyPoints > 0) {
     return err("invalid_settings", "Crew voted-out penalty must be zero or negative");
   }
+  if (
+    input.discussion.timerSeconds !== null &&
+    (!Number.isInteger(input.discussion.timerSeconds) ||
+      input.discussion.timerSeconds < 10 ||
+      input.discussion.timerSeconds > 600)
+  ) {
+    return err("invalid_settings", "discussion.timerSeconds must be null or 10-600");
+  }
 
   return ok({
     ...state,
@@ -279,6 +291,10 @@ export function updateSettings(state: GameState, input: UpdateSettingsInput): Re
         crewVotesOutImpostorPoints: input.scoring.crewVotesOutImpostorPoints,
         crewVotedOutPenaltyEnabled: input.scoring.crewVotedOutPenaltyEnabled,
         crewVotedOutPenaltyPoints: input.scoring.crewVotedOutPenaltyPoints,
+      },
+      discussion: {
+        ...state.settings.discussion,
+        timerSeconds: input.discussion.timerSeconds,
       },
     },
   });
@@ -357,7 +373,7 @@ export function revealNextAnswer(state: GameState): Result<GameState> {
   });
 }
 
-export function startDiscussion(state: GameState): Result<GameState> {
+export function startDiscussion(state: GameState, nowMs: number = Date.now()): Result<GameState> {
   if (state.currentRound === null || state.currentRound.phase !== "reveal") {
     return err("invalid_phase", "startDiscussion requires reveal phase");
   }
@@ -368,6 +384,10 @@ export function startDiscussion(state: GameState): Result<GameState> {
   const nextRound: RoundState = {
     ...state.currentRound,
     phase: "discussion",
+    discussionDeadlineMs:
+      state.settings.discussion.timerSeconds === null
+        ? null
+        : nowMs + state.settings.discussion.timerSeconds * 1000,
   };
 
   return ok({
@@ -385,6 +405,7 @@ export function endDiscussion(state: GameState): Result<GameState> {
   const nextRound: RoundState = {
     ...state.currentRound,
     phase: "voting",
+    discussionDeadlineMs: null,
   };
 
   return ok({
@@ -392,6 +413,40 @@ export function endDiscussion(state: GameState): Result<GameState> {
     phase: "voting",
     currentRound: nextRound,
   });
+}
+
+export function extendDiscussion(state: GameState, input: { addSeconds: number }): Result<GameState> {
+  if (state.currentRound === null || state.currentRound.phase !== "discussion") {
+    return err("invalid_phase", "extendDiscussion requires discussion phase");
+  }
+  if (state.currentRound.discussionDeadlineMs === null) {
+    return err("invalid_phase", "Discussion timer is disabled for this round");
+  }
+  if (!Number.isInteger(input.addSeconds) || input.addSeconds < 5 || input.addSeconds > 300) {
+    return err("invalid_round", "addSeconds must be an integer between 5 and 300");
+  }
+
+  const nextRound: RoundState = {
+    ...state.currentRound,
+    discussionDeadlineMs: state.currentRound.discussionDeadlineMs + input.addSeconds * 1000,
+  };
+  return ok({
+    ...state,
+    currentRound: nextRound,
+  });
+}
+
+export function applyDiscussionTimeout(state: GameState, nowMs: number = Date.now()): Result<GameState> {
+  if (state.currentRound === null || state.currentRound.phase !== "discussion") {
+    return ok(state);
+  }
+  if (state.currentRound.discussionDeadlineMs === null) {
+    return ok(state);
+  }
+  if (nowMs < state.currentRound.discussionDeadlineMs) {
+    return ok(state);
+  }
+  return endDiscussion(state);
 }
 
 export function castVote(state: GameState, voterId: PlayerId, targetId: PlayerId): Result<GameState> {

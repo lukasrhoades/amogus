@@ -369,6 +369,9 @@ describe("game command route", () => {
             crewVotedOutPenaltyEnabled: false,
             crewVotedOutPenaltyPoints: -1,
           },
+          discussion: {
+            timerSeconds: 120,
+          },
         },
       },
       hostCookie,

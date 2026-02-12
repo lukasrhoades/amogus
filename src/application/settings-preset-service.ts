@@ -15,6 +15,9 @@ function defaultPresetConfig(): SettingsPresetConfig {
       crewVotedOutPenaltyEnabled: true,
       crewVotedOutPenaltyPoints: -1,
     },
+    discussion: {
+      timerSeconds: null,
+    },
   };
 }
 

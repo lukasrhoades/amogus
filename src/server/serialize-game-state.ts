@@ -21,6 +21,9 @@ export type SerializedGameState = {
       crewVotedOutPenaltyEnabled: boolean;
       crewVotedOutPenaltyPoints: number;
     };
+    discussion: {
+      timerSeconds: number | null;
+    };
   };
   players: Array<{
     id: string;
@@ -39,6 +42,7 @@ export type SerializedGameState = {
     answersCount: number;
     answersSubmittedBy: string[];
     revealedAnswerCount: number;
+    discussionDeadlineMs: number | null;
     votesCount: number;
     votesSubmittedBy: string[];
     eliminatedPlayerId: string | null;
@@ -142,6 +146,9 @@ export function serializeGameState(state: GameState, viewerPlayerId?: string): S
         crewVotedOutPenaltyEnabled: state.settings.scoring.crewVotedOutPenaltyEnabled,
         crewVotedOutPenaltyPoints: state.settings.scoring.crewVotedOutPenaltyPoints,
       },
+      discussion: {
+        timerSeconds: state.settings.discussion.timerSeconds,
+      },
     },
     players: Object.values(state.players).map((player) => ({
       id: player.id,
@@ -165,6 +172,7 @@ export function serializeGameState(state: GameState, viewerPlayerId?: string): S
               (playerId) => state.currentRound?.answers[playerId] !== undefined,
             ),
             revealedAnswerCount: state.currentRound.revealedAnswerCount,
+            discussionDeadlineMs: state.currentRound.discussionDeadlineMs,
             votesCount: Object.keys(state.currentRound.votes).length,
             votesSubmittedBy: state.currentRound.activePlayerIds.filter(
               (playerId) => state.currentRound?.votes[playerId] !== undefined,

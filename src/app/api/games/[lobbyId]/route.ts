@@ -37,6 +37,7 @@ export async function GET(
   }
 
   const runtime = getRuntime();
+  await runtime.gameService.applyDiscussionTimeout(params.data.lobbyId, Date.now());
   const state = await runtime.gameService.get(params.data.lobbyId);
   if (!state.ok) {
     return NextResponse.json(

@@ -48,6 +48,9 @@ describe("settings preset routes", () => {
               crewVotedOutPenaltyEnabled: true,
               crewVotedOutPenaltyPoints: -1,
             },
+            discussion: {
+              timerSeconds: null,
+            },
           },
         }),
       }),
