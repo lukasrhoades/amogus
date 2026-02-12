@@ -240,7 +240,7 @@ describe("game read route viewer prompts", () => {
 
     expect(p3View.status).toBe(200);
     expect(p3Json.currentRound?.trueQuestion).toBe("True Crew Question");
-    expect(p3Json.currentRound?.alternativeQuestion).toBe("Impostor Question");
+    expect(p3Json.currentRound?.alternativeQuestion).toBeNull();
     expect(p3Json.currentRound?.revealedAnswers?.map((a) => a.answer)).toEqual(["a1", "a2", "a3", "a4"]);
   });
 });

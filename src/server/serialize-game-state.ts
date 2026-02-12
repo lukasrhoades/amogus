@@ -133,9 +133,7 @@ export function serializeGameState(state: GameState, viewerPlayerId?: string): S
                 ? null
                 : revealedQuestions(state.currentRound.selectedQuestionPair).trueQuestion,
             alternativeQuestion:
-              state.currentRound.phase === "prompting"
-                ? null
-                : revealedQuestions(state.currentRound.selectedQuestionPair).alternativeQuestion,
+              null,
             revealedAnswers:
               state.currentRound.phase === "prompting"
                 ? null
