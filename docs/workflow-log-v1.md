@@ -25,6 +25,9 @@ Implemented in:
 - `src/adapters/prisma/game-state-json.ts`
 - `src/server/prisma-client.ts`
 - `prisma/schema.prisma`
+- `src/app/api/lobbies/route.ts`
+- `src/app/api/lobbies/[lobbyId]/join/route.ts`
+- `src/server/lobby/defaults.ts`
 
 DSL-style commands (pure domain transitions):
 - `createInitialGameState`
@@ -118,7 +121,10 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - host disconnect pauses game state and unanimous transfer votes reassign host
 - host timeout command ends lobby when connected count falls below 4
 - extended host pause mode (1 hour watchdog) delays timeout end condition
-- Latest result: `29` tests passing.
+- Added lobby route integration tests:
+- `src/app/api/lobbies/route.test.ts`
+- `src/app/api/lobbies/[lobbyId]/join/route.test.ts`
+- Latest result: `33` tests passing.
 - Latest result: `31` tests passing.
 - Latest result: `30` tests passing.
 
@@ -140,5 +146,6 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - In-memory game store resets on server restart; persistence adapter still pending.
 - Runtime now supports repo driver switch (`GAME_SESSION_REPO=memory|prisma`); Prisma adapter implemented.
 - Production policy locked: `NODE_ENV=production` requires `GAME_SESSION_REPO=prisma` (fail fast otherwise).
+- Real lobby create/join APIs now exist; demo-only seed path is no longer the sole entrypoint.
 - Host-transfer/disconnect timeout policies are still unimplemented at domain/application level.
 - Host pause-extension behavior is implemented for host-disconnect pause flow.
