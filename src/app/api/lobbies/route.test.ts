@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { POST as createLobby } from "./route";
 import { GET as getLobby } from "../games/[lobbyId]/route";
 import { resetRuntimeForTests } from "../../../server/runtime";
+import { encodeSessionCookieValue } from "../../../server/session/session";
+
+const hostSession = { playerId: "host-1", displayName: "Lukas" };
 
 describe("lobbies create route", () => {
   beforeEach(() => {
@@ -13,11 +16,12 @@ describe("lobbies create route", () => {
   it("creates a lobby and allows reading it through game route", async () => {
     const request = new Request("http://localhost/api/lobbies", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `sdg_session=${encodeSessionCookieValue(hostSession)}`,
+      },
       body: JSON.stringify({
         lobbyId: "alpha123",
-        hostPlayerId: "host-1",
-        hostDisplayName: "Lukas",
       }),
     });
 

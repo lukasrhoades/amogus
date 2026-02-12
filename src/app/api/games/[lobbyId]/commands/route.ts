@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { getRuntime } from "../../../../../server/runtime";
 import { serializeGameState } from "../../../../../server/serialize-game-state";
+import { readSessionFromRequest } from "../../../../../server/session/session";
 
 const paramsSchema = z.object({
   lobbyId: z.string().min(1),
@@ -34,7 +35,6 @@ const commandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("submit_answer"),
     payload: z.object({
-      playerId: z.string().min(1),
       answer: z.string().min(1),
     }),
   }),
@@ -53,7 +53,6 @@ const commandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("cast_vote"),
     payload: z.object({
-      voterId: z.string().min(1),
       targetId: z.string().min(1),
     }),
   }),
@@ -81,7 +80,6 @@ const commandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("set_player_connection"),
     payload: z.object({
-      playerId: z.string().min(1),
       connected: z.boolean(),
       nowMs: z.number().int().nonnegative().optional(),
     }),
@@ -89,7 +87,6 @@ const commandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("cast_host_transfer_vote"),
     payload: z.object({
-      voterId: z.string().min(1),
       newHostId: z.string().min(1),
     }),
   }),
@@ -111,9 +108,7 @@ const commandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("leave_lobby"),
-    payload: z.object({
-      playerId: z.string().min(1),
-    }),
+    payload: z.object({}),
   }),
 ]);
 
@@ -139,15 +134,45 @@ function domainErrorStatus(code: string): number {
   return 400;
 }
 
-async function runCommand(lobbyId: string, command: Command) {
+function isHostOnlyCommand(commandType: Command["type"]): boolean {
+  return (
+    commandType === "start_round" ||
+    commandType === "reveal_question" ||
+    commandType === "start_discussion" ||
+    commandType === "end_discussion" ||
+    commandType === "close_voting" ||
+    commandType === "finalize_round" ||
+    commandType === "cancel_round" ||
+    commandType === "remove_player"
+  );
+}
+
+async function runCommand(lobbyId: string, command: Command, sessionPlayerId: string) {
   const runtime = getRuntime();
   const service = runtime.gameService;
+
+  if (isHostOnlyCommand(command.type)) {
+    const state = await service.get(lobbyId);
+    if (!state.ok) {
+      return state;
+    }
+    const caller = state.value.players[sessionPlayerId];
+    if (caller === undefined || !caller.isHost) {
+      return {
+        ok: false as const,
+        error: {
+          code: "invalid_round" as const,
+          message: "Host privileges required for this command",
+        },
+      };
+    }
+  }
 
   switch (command.type) {
     case "start_round":
       return service.startRound(lobbyId, command.payload);
     case "submit_answer":
-      return service.submitAnswer(lobbyId, command.payload.playerId, command.payload.answer);
+      return service.submitAnswer(lobbyId, sessionPlayerId, command.payload.answer);
     case "reveal_question":
       return service.revealQuestion(lobbyId);
     case "start_discussion":
@@ -155,7 +180,7 @@ async function runCommand(lobbyId: string, command: Command) {
     case "end_discussion":
       return service.endDiscussion(lobbyId);
     case "cast_vote":
-      return service.castVote(lobbyId, command.payload.voterId, command.payload.targetId);
+      return service.castVote(lobbyId, sessionPlayerId, command.payload.targetId);
     case "close_voting": {
       const input =
         command.payload.tieBreakLoserId === undefined
@@ -171,14 +196,9 @@ async function runCommand(lobbyId: string, command: Command) {
     case "cancel_round":
       return service.cancelCurrentRoundBeforeReveal(lobbyId, command.payload.reason);
     case "set_player_connection":
-      return service.setPlayerConnection(
-        lobbyId,
-        command.payload.playerId,
-        command.payload.connected,
-        command.payload.nowMs,
-      );
+      return service.setPlayerConnection(lobbyId, sessionPlayerId, command.payload.connected, command.payload.nowMs);
     case "cast_host_transfer_vote":
-      return service.castHostTransferVote(lobbyId, command.payload.voterId, command.payload.newHostId);
+      return service.castHostTransferVote(lobbyId, sessionPlayerId, command.payload.newHostId);
     case "apply_host_disconnect_timeout":
       return service.applyHostDisconnectTimeout(lobbyId, command.payload.nowMs);
     case "extend_host_disconnect_pause":
@@ -186,7 +206,7 @@ async function runCommand(lobbyId: string, command: Command) {
     case "remove_player":
       return service.removePlayer(lobbyId, command.payload.playerId);
     case "leave_lobby":
-      return service.removePlayer(lobbyId, command.payload.playerId);
+      return service.removePlayer(lobbyId, sessionPlayerId);
     default: {
       const exhausted: never = command;
       return exhausted;
@@ -198,6 +218,17 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ lobbyId: string }> },
 ) {
+  const session = readSessionFromRequest(request);
+  if (session === null) {
+    return NextResponse.json(
+      {
+        error: "no_session",
+        message: "Create a session before sending commands",
+      },
+      { status: 401 },
+    );
+  }
+
   const params = paramsSchema.safeParse(await context.params);
   if (!params.success) {
     return NextResponse.json(
@@ -220,7 +251,7 @@ export async function POST(
     );
   }
 
-  const result = await runCommand(params.data.lobbyId, parsed.data);
+  const result = await runCommand(params.data.lobbyId, parsed.data, session.playerId);
   if (!result.ok) {
     return NextResponse.json(
       {

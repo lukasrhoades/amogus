@@ -5,37 +5,33 @@ import { z } from "zod";
 import { getRuntime } from "../../../../../server/runtime";
 import { addPlayerToLobbyState } from "../../../../../server/lobby/defaults";
 import { serializeGameState } from "../../../../../server/serialize-game-state";
+import { readSessionFromRequest } from "../../../../../server/session/session";
 
 const paramsSchema = z.object({
   lobbyId: z.string().min(1),
-});
-
-const joinLobbySchema = z.object({
-  playerId: z.string().min(1).max(64),
-  displayName: z.string().min(1).max(64),
 });
 
 export async function POST(
   request: Request,
   context: { params: Promise<{ lobbyId: string }> },
 ) {
+  const session = readSessionFromRequest(request);
+  if (session === null) {
+    return NextResponse.json(
+      {
+        error: "no_session",
+        message: "Create a session before joining a lobby",
+      },
+      { status: 401 },
+    );
+  }
+
   const params = paramsSchema.safeParse(await context.params);
   if (!params.success) {
     return NextResponse.json(
       {
         error: "invalid_params",
         details: params.error.flatten(),
-      },
-      { status: 400 },
-    );
-  }
-
-  const parsed = joinLobbySchema.safeParse(await request.json());
-  if (!parsed.success) {
-    return NextResponse.json(
-      {
-        error: "invalid_join_request",
-        details: parsed.error.flatten(),
       },
       { status: 400 },
     );
@@ -53,7 +49,10 @@ export async function POST(
     );
   }
 
-  const next = addPlayerToLobbyState(current.value, parsed.data);
+  const next = addPlayerToLobbyState(current.value, {
+    playerId: session.playerId,
+    displayName: session.displayName,
+  });
   await runtime.gameService.create(next);
 
   return NextResponse.json({

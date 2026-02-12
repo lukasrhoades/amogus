@@ -4,14 +4,24 @@ import { z } from "zod";
 
 import { getRuntime } from "../../../server/runtime";
 import { createLobbyState } from "../../../server/lobby/defaults";
+import { readSessionFromRequest } from "../../../server/session/session";
 
 const createLobbySchema = z.object({
   lobbyId: z.string().min(4).max(32),
-  hostPlayerId: z.string().min(1).max(64),
-  hostDisplayName: z.string().min(1).max(64),
 });
 
 export async function POST(request: Request) {
+  const session = readSessionFromRequest(request);
+  if (session === null) {
+    return NextResponse.json(
+      {
+        error: "no_session",
+        message: "Create a session before creating a lobby",
+      },
+      { status: 401 },
+    );
+  }
+
   const parsed = createLobbySchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json(
@@ -35,13 +45,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const state = createLobbyState(parsed.data);
+  const state = createLobbyState({
+    lobbyId: parsed.data.lobbyId,
+    hostPlayerId: session.playerId,
+    hostDisplayName: session.displayName,
+  });
   await runtime.gameService.create(state);
 
   return NextResponse.json(
     {
       lobbyId: state.lobbyId,
-      hostPlayerId: parsed.data.hostPlayerId,
+      hostPlayerId: session.playerId,
       playerCount: Object.keys(state.players).length,
       phase: state.phase,
     },

@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 
+type Session = {
+  playerId: string;
+  displayName: string;
+};
+
 type LobbySnapshot = {
   lobbyId: string;
   status: string;
@@ -28,11 +33,6 @@ type LobbySnapshot = {
   };
 };
 
-type CommandResponse = {
-  ok: true;
-  state: LobbySnapshot;
-};
-
 type CommandPayload =
   | {
       type: "start_round";
@@ -53,34 +53,44 @@ type CommandPayload =
         roleAssignment: Record<string, "impostor" | "crew">;
       };
     }
-  | {
-      type: "submit_answer";
-      payload: {
-        playerId: string;
-        answer: string;
-      };
-    }
+  | { type: "submit_answer"; payload: { answer: string } }
   | { type: "reveal_question"; payload: Record<string, never> }
   | { type: "start_discussion"; payload: Record<string, never> }
   | { type: "end_discussion"; payload: Record<string, never> }
-  | { type: "cast_vote"; payload: { voterId: string; targetId: string } }
+  | { type: "cast_vote"; payload: { targetId: string } }
   | { type: "close_voting"; payload: { allowMissingVotes: boolean; tieBreakLoserId?: string } }
   | { type: "finalize_round"; payload: Record<string, never> }
   | { type: "remove_player"; payload: { playerId: string } }
-  | { type: "leave_lobby"; payload: { playerId: string } };
+  | { type: "leave_lobby"; payload: Record<string, never> };
 
 export default function HomePage() {
-  const [message, setMessage] = useState<string>("Create or join a lobby.");
-  const [snapshot, setSnapshot] = useState<LobbySnapshot | null>(null);
+  const [message, setMessage] = useState<string>("Create a session to begin.");
+  const [session, setSession] = useState<Session | null>(null);
+  const [sessionDisplayName, setSessionDisplayName] = useState<string>("Player");
 
+  const [snapshot, setSnapshot] = useState<LobbySnapshot | null>(null);
   const [activeLobbyId, setActiveLobbyId] = useState<string>("demo-lobby");
   const [createLobbyId, setCreateLobbyId] = useState<string>("demo-lobby");
-  const [hostPlayerId, setHostPlayerId] = useState<string>("p1");
-  const [hostDisplayName, setHostDisplayName] = useState<string>("Host");
-  const [joinPlayerId, setJoinPlayerId] = useState<string>("p2");
-  const [joinDisplayName, setJoinDisplayName] = useState<string>("Avery");
   const [removePlayerId, setRemovePlayerId] = useState<string>("p5");
-  const [leavePlayerId, setLeavePlayerId] = useState<string>("p4");
+  const [answerText, setAnswerText] = useState<string>("demo-answer");
+  const [voteTargetId, setVoteTargetId] = useState<string>("p2");
+
+  async function createSession() {
+    const response = await fetch("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName: sessionDisplayName }),
+    });
+
+    if (!response.ok) {
+      setMessage("Failed to create session.");
+      return;
+    }
+
+    const payload = (await response.json()) as { session: Session };
+    setSession(payload.session);
+    setMessage(`Session ready: ${payload.session.displayName} (${payload.session.playerId})`);
+  }
 
   async function createLobby() {
     const response = await fetch("/api/lobbies", {
@@ -88,8 +98,6 @@ export default function HomePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         lobbyId: createLobbyId,
-        hostPlayerId,
-        hostDisplayName,
       }),
     });
 
@@ -108,10 +116,7 @@ export default function HomePage() {
     const response = await fetch(`/api/lobbies/${activeLobbyId}/join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        playerId: joinPlayerId,
-        displayName: joinDisplayName,
-      }),
+      body: JSON.stringify({}),
     });
 
     if (!response.ok) {
@@ -120,7 +125,7 @@ export default function HomePage() {
       return;
     }
 
-    setMessage(`Player ${joinDisplayName} joined ${activeLobbyId}.`);
+    setMessage(`Joined ${activeLobbyId}.`);
     await loadLobby(activeLobbyId);
   }
 
@@ -153,7 +158,7 @@ export default function HomePage() {
       return;
     }
 
-    const payload = (await response.json()) as CommandResponse;
+    const payload = (await response.json()) as { state: LobbySnapshot };
     setSnapshot(payload.state);
     setMessage(`Command succeeded: ${command.type}`);
   }
@@ -186,35 +191,20 @@ export default function HomePage() {
     });
   }
 
-  async function submitDemoAnswers() {
-    if (snapshot?.currentRound === null || snapshot?.currentRound === undefined) {
-      setMessage("No active round to answer.");
-      return;
-    }
-
-    for (const playerId of snapshot.currentRound.activePlayerIds) {
-      await runCommand({
-        type: "submit_answer",
-        payload: {
-          playerId,
-          answer: `demo-answer-${playerId}`,
-        },
-      });
-    }
-  }
-
-  async function castDemoVotes() {
-    await runCommand({ type: "cast_vote", payload: { voterId: "p2", targetId: "p3" } });
-    await runCommand({ type: "cast_vote", payload: { voterId: "p3", targetId: "p2" } });
-    await runCommand({ type: "cast_vote", payload: { voterId: "p4", targetId: "p2" } });
-    await runCommand({ type: "cast_vote", payload: { voterId: "p5", targetId: "p2" } });
-  }
-
   return (
     <main>
       <div className="container">
         <h1>Social Deduction Games</h1>
-        <p>Playable-first scaffold: domain rules are wired through application service and typed API boundaries.</p>
+        <p>Identity-bound prototype: actions use session player identity from secure cookie.</p>
+
+        <h2>Session</h2>
+        <p>
+          Display Name: <input value={sessionDisplayName} onChange={(e) => setSessionDisplayName(e.target.value)} />{" "}
+          <button type="button" onClick={createSession}>
+            Create Session
+          </button>
+        </p>
+        <p>{session === null ? "No session." : `Session: ${session.displayName} (${session.playerId})`}</p>
 
         <h2>Lobby Setup</h2>
         <p>
@@ -224,16 +214,10 @@ export default function HomePage() {
           </button>
         </p>
         <p>
-          Create ID: <input value={createLobbyId} onChange={(e) => setCreateLobbyId(e.target.value)} /> Host ID:{" "}
-          <input value={hostPlayerId} onChange={(e) => setHostPlayerId(e.target.value)} /> Host Name:{" "}
-          <input value={hostDisplayName} onChange={(e) => setHostDisplayName(e.target.value)} />{" "}
+          Create ID: <input value={createLobbyId} onChange={(e) => setCreateLobbyId(e.target.value)} />{" "}
           <button type="button" onClick={createLobby}>
             Create Lobby
-          </button>
-        </p>
-        <p>
-          Join Player ID: <input value={joinPlayerId} onChange={(e) => setJoinPlayerId(e.target.value)} /> Name:{" "}
-          <input value={joinDisplayName} onChange={(e) => setJoinDisplayName(e.target.value)} />{" "}
+          </button>{" "}
           <button type="button" onClick={joinLobby}>
             Join Active Lobby
           </button>
@@ -243,8 +227,7 @@ export default function HomePage() {
           <button type="button" onClick={() => runCommand({ type: "remove_player", payload: { playerId: removePlayerId } })}>
             Host Remove Player
           </button>{" "}
-          Leave Player ID: <input value={leavePlayerId} onChange={(e) => setLeavePlayerId(e.target.value)} />{" "}
-          <button type="button" onClick={() => runCommand({ type: "leave_lobby", payload: { playerId: leavePlayerId } })}>
+          <button type="button" onClick={() => runCommand({ type: "leave_lobby", payload: {} })}>
             Leave Lobby
           </button>
         </p>
@@ -252,31 +235,37 @@ export default function HomePage() {
         <h2>Round Commands</h2>
         <p>
           <button type="button" onClick={startDemoRound}>
-            1) Start Demo Round
+            1) Start Demo Round (Host)
           </button>{" "}
-          <button type="button" onClick={submitDemoAnswers}>
-            2) Submit Demo Answers
-          </button>{" "}
+          Answer: <input value={answerText} onChange={(e) => setAnswerText(e.target.value)} />{" "}
+          <button type="button" onClick={() => runCommand({ type: "submit_answer", payload: { answer: answerText } })}>
+            2) Submit My Answer
+          </button>
+        </p>
+        <p>
           <button type="button" onClick={() => runCommand({ type: "reveal_question", payload: {} })}>
-            3) Reveal Question
+            3) Reveal Question (Host)
           </button>{" "}
           <button type="button" onClick={() => runCommand({ type: "start_discussion", payload: {} })}>
-            4) Start Discussion
+            4) Start Discussion (Host)
           </button>{" "}
           <button type="button" onClick={() => runCommand({ type: "end_discussion", payload: {} })}>
-            5) End Discussion
-          </button>{" "}
-          <button type="button" onClick={castDemoVotes}>
-            6) Cast Demo Votes
+            5) End Discussion (Host)
+          </button>
+        </p>
+        <p>
+          Vote Target: <input value={voteTargetId} onChange={(e) => setVoteTargetId(e.target.value)} />{" "}
+          <button type="button" onClick={() => runCommand({ type: "cast_vote", payload: { targetId: voteTargetId } })}>
+            6) Cast My Vote
           </button>{" "}
           <button
             type="button"
             onClick={() => runCommand({ type: "close_voting", payload: { allowMissingVotes: false } })}
           >
-            7) Close Voting
+            7) Close Voting (Host)
           </button>{" "}
           <button type="button" onClick={() => runCommand({ type: "finalize_round", payload: {} })}>
-            8) Finalize Round
+            8) Finalize Round (Host)
           </button>
         </p>
 

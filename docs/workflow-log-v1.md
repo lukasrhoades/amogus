@@ -28,6 +28,8 @@ Implemented in:
 - `src/app/api/lobbies/route.ts`
 - `src/app/api/lobbies/[lobbyId]/join/route.ts`
 - `src/server/lobby/defaults.ts`
+- `src/server/session/session.ts`
+- `src/app/api/session/route.ts`
 
 DSL-style commands (pure domain transitions):
 - `createInitialGameState`
@@ -66,6 +68,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Deferred to boundary adapters (`zod` schemas and API/socket ingress) once web layer is scaffolded.
 - Runtime adapter selection now supports `GAME_SESSION_REPO=auto`, which attempts Prisma and falls back to in-memory when DB is unavailable.
 - Route tests pin `GAME_SESSION_REPO=memory` to avoid environment-coupled failures.
+- Session identity is enforced at route boundaries using cookie-backed session parsing.
 
 ## 8. Security Log
 - Dependencies introduced:
@@ -127,7 +130,9 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Added remove/leave player tests:
 - `src/application/game-session-service.test.ts` (remove player)
 - `src/app/api/games/[lobbyId]/commands/route.test.ts` (`remove_player`, `leave_lobby`)
-- Latest result: `37` tests passing.
+- Added session route tests:
+- `src/app/api/session/route.test.ts`
+- Latest result: `32` tests passing.
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -142,9 +147,10 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 
 ## 13. Final Risks And Follow-Ups
 - Next.js scaffold exists with API boundaries and baseline lobby/round controls.
-- Boundary validation and auth not implemented yet.
+- Boundary validation is implemented and lightweight session auth bootstrap exists.
 - Need websocket transport and auth integration.
 - Runtime supports repo driver switch (`GAME_SESSION_REPO=memory|prisma|auto`); Prisma adapter implemented.
 - Production policy locked: `NODE_ENV=production` requires `GAME_SESSION_REPO=prisma` (fail fast otherwise).
 - Real lobby create/join APIs now exist; demo-only seed path is no longer the sole entrypoint.
 - Host pause-extension behavior is implemented for host-disconnect pause flow.
+- Session identity is now required for create/join/command actions (host checks enforced for host-only commands).
