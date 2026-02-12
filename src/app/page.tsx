@@ -35,7 +35,7 @@ type LobbySnapshot = {
     viewerPlayerId: string;
     isActive: boolean;
     role: "impostor" | "crew" | null;
-    prompts: string[];
+    prompt: string | null;
   };
 };
 

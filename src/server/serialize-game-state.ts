@@ -28,18 +28,28 @@ export type SerializedGameState = {
     viewerPlayerId: string;
     isActive: boolean;
     role: "impostor" | "crew" | null;
-    prompts: string[];
+    prompt: string | null;
   };
 };
 
-function promptsForRole(
+function isPromptAllowedForRole(
+  prompt: QuestionPair["promptA"],
+  role: Role,
+): boolean {
+  return prompt.target === "both" || prompt.target === role;
+}
+
+function promptForRole(
   pair: QuestionPair,
   role: Role,
-): string[] {
-  const prompts = [pair.promptA, pair.promptB];
-  return prompts
-    .filter((prompt) => prompt.target === "both" || prompt.target === role)
-    .map((prompt) => prompt.text);
+): string | null {
+  if (isPromptAllowedForRole(pair.promptA, role)) {
+    return pair.promptA.text;
+  }
+  if (isPromptAllowedForRole(pair.promptB, role)) {
+    return pair.promptB.text;
+  }
+  return null;
 }
 
 export function serializeGameState(state: GameState, viewerPlayerId?: string): SerializedGameState {
@@ -54,7 +64,7 @@ export function serializeGameState(state: GameState, viewerPlayerId?: string): S
               viewerPlayerId: viewer.id,
               isActive: false,
               role: null,
-              prompts: [] as string[],
+              prompt: null,
             };
           }
 
@@ -62,7 +72,7 @@ export function serializeGameState(state: GameState, viewerPlayerId?: string): S
             viewerPlayerId: viewer.id,
             isActive: true,
             role,
-            prompts: promptsForRole(state.currentRound.selectedQuestionPair, role),
+            prompt: promptForRole(state.currentRound.selectedQuestionPair, role),
           };
         })();
 

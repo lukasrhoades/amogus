@@ -120,10 +120,10 @@ describe("game read route viewer prompts", () => {
       }),
       context("viewer-lobby"),
     );
-    const p2Json = (await p2View.json()) as { viewerRound: { role: string | null; prompts: string[] } | null };
+    const p2Json = (await p2View.json()) as { viewerRound: { role: string | null; prompt: string | null } | null };
     expect(p2View.status).toBe(200);
     expect(p2Json.viewerRound?.role).toBe("impostor");
-    expect(p2Json.viewerRound?.prompts).toEqual(["Impostor Prompt"]);
+    expect(p2Json.viewerRound?.prompt).toBe("Impostor Prompt");
 
     const p3View = await getLobby(
       new Request("http://localhost/api/games/viewer-lobby", {
@@ -132,9 +132,9 @@ describe("game read route viewer prompts", () => {
       }),
       context("viewer-lobby"),
     );
-    const p3Json = (await p3View.json()) as { viewerRound: { role: string | null; prompts: string[] } | null };
+    const p3Json = (await p3View.json()) as { viewerRound: { role: string | null; prompt: string | null } | null };
     expect(p3View.status).toBe(200);
     expect(p3Json.viewerRound?.role).toBe("crew");
-    expect(p3Json.viewerRound?.prompts).toEqual(["Crew Prompt"]);
+    expect(p3Json.viewerRound?.prompt).toBe("Crew Prompt");
   });
 });
