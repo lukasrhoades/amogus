@@ -25,3 +25,8 @@ export function getRuntime(): Runtime {
   }
   return globalRef[runtimeSingleton];
 }
+
+export function resetRuntimeForTests(): void {
+  const globalRef = globalThis as GlobalWithRuntime;
+  delete globalRef[runtimeSingleton];
+}

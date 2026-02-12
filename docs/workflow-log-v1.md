@@ -92,6 +92,11 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - `2 impostor` scoring branches (both survive, one voted out)
 - final winner tiebreak behavior (impostor-survival then random)
 - Latest result: `15` tests passing.
+- Added command-route integration tests in `src/app/api/games/[lobbyId]/commands/route.test.ts`:
+- malformed command payload returns `invalid_command` (`400`)
+- missing lobby maps to `game_not_found` (`404`)
+- successful `start_round` command transitions lobby to prompting phase
+- Latest result: `18` tests passing.
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -111,4 +116,4 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Need expanded boundary-layer validation coverage for command endpoints (only read/seed routes exist).
 - Need websocket transport and auth integration.
 - In-memory game store resets on server restart; persistence adapter still pending.
-- Need API route integration tests for command endpoint semantics and error mapping.
+- Need broader API integration coverage for remaining command flows (`submit_answer`, voting, finalize, cancel).
