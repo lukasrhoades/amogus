@@ -594,7 +594,8 @@ export function canStartAnotherRound(state: GameState): boolean {
 }
 
 export function removePlayer(state: GameState, playerId: PlayerId): Result<GameState> {
-  if (state.players[playerId] === undefined) {
+  const removedPlayer = state.players[playerId];
+  if (removedPlayer === undefined) {
     return err("invalid_round", `Player ${playerId} does not exist`);
   }
 
@@ -604,10 +605,51 @@ export function removePlayer(state: GameState, playerId: PlayerId): Result<GameS
   const nextScoreboard = { ...state.scoreboard };
   delete nextScoreboard[playerId];
 
+  const nextCurrentRound =
+    state.currentRound === null
+      ? null
+      : {
+          ...state.currentRound,
+          activePlayerIds: state.currentRound.activePlayerIds.filter((id) => id !== playerId),
+          satOutPlayerId: state.currentRound.satOutPlayerId === playerId ? null : state.currentRound.satOutPlayerId,
+          answers: Object.fromEntries(
+            Object.entries(state.currentRound.answers).filter(([id]) => id !== playerId),
+          ),
+          votes: Object.fromEntries(
+            Object.entries(state.currentRound.votes).filter(([id, targetId]) => id !== playerId && targetId !== playerId),
+          ),
+          roles: Object.fromEntries(
+            Object.entries(state.currentRound.roles).filter(([id]) => id !== playerId),
+          ),
+          eliminatedPlayerId:
+            state.currentRound.eliminatedPlayerId === playerId ? null : state.currentRound.eliminatedPlayerId,
+        };
+
+  const shouldAssignNewHost = removedPlayer.isHost && Object.keys(nextPlayers).length > 0;
+  const promotedHostId = shouldAssignNewHost
+    ? (Object.values(nextPlayers).find((player) => player.connected)?.id ??
+      Object.values(nextPlayers).find((player) => true)?.id ??
+      null)
+    : null;
+
+  const playersWithHostReassignment =
+    promotedHostId === null
+      ? nextPlayers
+      : Object.fromEntries(
+          Object.entries(nextPlayers).map(([id, player]) => [
+            id,
+            {
+              ...player,
+              isHost: id === promotedHostId,
+            },
+          ]),
+        );
+
   return ok({
     ...state,
-    players: nextPlayers,
+    players: playersWithHostReassignment,
     scoreboard: nextScoreboard,
+    currentRound: nextCurrentRound,
   });
 }
 

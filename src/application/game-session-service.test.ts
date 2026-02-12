@@ -136,4 +136,19 @@ describe("GameSessionService", () => {
 
     expect(fetched.value.completedRounds).toBe(1);
   });
+
+  it("removes players from lobby state", async () => {
+    const service = new GameSessionService(new InMemoryGameSessionRepo());
+    const initial = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+    await service.create(initial);
+
+    const removed = await service.removePlayer("l1", "p4");
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) return;
+    expect(removed.value.players.p4).toBeUndefined();
+  });
 });

@@ -103,6 +103,18 @@ const commandSchema = z.discriminatedUnion("type", [
     type: z.literal("extend_host_disconnect_pause"),
     payload: z.object({}),
   }),
+  z.object({
+    type: z.literal("remove_player"),
+    payload: z.object({
+      playerId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    type: z.literal("leave_lobby"),
+    payload: z.object({
+      playerId: z.string().min(1),
+    }),
+  }),
 ]);
 
 type Command = z.infer<typeof commandSchema>;
@@ -171,6 +183,10 @@ async function runCommand(lobbyId: string, command: Command) {
       return service.applyHostDisconnectTimeout(lobbyId, command.payload.nowMs);
     case "extend_host_disconnect_pause":
       return service.extendHostDisconnectPause(lobbyId);
+    case "remove_player":
+      return service.removePlayer(lobbyId, command.payload.playerId);
+    case "leave_lobby":
+      return service.removePlayer(lobbyId, command.payload.playerId);
     default: {
       const exhausted: never = command;
       return exhausted;

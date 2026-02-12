@@ -65,7 +65,9 @@ type CommandPayload =
   | { type: "end_discussion"; payload: Record<string, never> }
   | { type: "cast_vote"; payload: { voterId: string; targetId: string } }
   | { type: "close_voting"; payload: { allowMissingVotes: boolean; tieBreakLoserId?: string } }
-  | { type: "finalize_round"; payload: Record<string, never> };
+  | { type: "finalize_round"; payload: Record<string, never> }
+  | { type: "remove_player"; payload: { playerId: string } }
+  | { type: "leave_lobby"; payload: { playerId: string } };
 
 export default function HomePage() {
   const [message, setMessage] = useState<string>("Create or join a lobby.");
@@ -77,6 +79,8 @@ export default function HomePage() {
   const [hostDisplayName, setHostDisplayName] = useState<string>("Host");
   const [joinPlayerId, setJoinPlayerId] = useState<string>("p2");
   const [joinDisplayName, setJoinDisplayName] = useState<string>("Avery");
+  const [removePlayerId, setRemovePlayerId] = useState<string>("p5");
+  const [leavePlayerId, setLeavePlayerId] = useState<string>("p4");
 
   async function createLobby() {
     const response = await fetch("/api/lobbies", {
@@ -232,6 +236,16 @@ export default function HomePage() {
           <input value={joinDisplayName} onChange={(e) => setJoinDisplayName(e.target.value)} />{" "}
           <button type="button" onClick={joinLobby}>
             Join Active Lobby
+          </button>
+        </p>
+        <p>
+          Remove Player ID: <input value={removePlayerId} onChange={(e) => setRemovePlayerId(e.target.value)} />{" "}
+          <button type="button" onClick={() => runCommand({ type: "remove_player", payload: { playerId: removePlayerId } })}>
+            Host Remove Player
+          </button>{" "}
+          Leave Player ID: <input value={leavePlayerId} onChange={(e) => setLeavePlayerId(e.target.value)} />{" "}
+          <button type="button" onClick={() => runCommand({ type: "leave_lobby", payload: { playerId: leavePlayerId } })}>
+            Leave Lobby
           </button>
         </p>
 

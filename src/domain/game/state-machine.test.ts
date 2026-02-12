@@ -14,6 +14,7 @@ import {
   startDiscussion,
   startRound,
   extendHostDisconnectPause,
+  removePlayer,
   setPlayerConnection,
   submitAnswer,
 } from "./state-machine";
@@ -550,6 +551,23 @@ describe("host disconnect rules", () => {
 
     expect(extended.value.hostDisconnection?.deadlineMs).toBe(3601000);
     expect(extended.value.hostDisconnection?.extendedPauseEnabled).toBe(true);
+  });
+});
+
+describe("player removal", () => {
+  it("promotes a connected non-host when host is removed", () => {
+    const state = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+
+    const removed = removePlayer(state, "p1");
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) return;
+
+    expect(removed.value.players.p2?.isHost).toBe(true);
+    expect(removed.value.players.p3?.isHost).toBe(false);
   });
 });
 

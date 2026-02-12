@@ -124,9 +124,10 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Added lobby route integration tests:
 - `src/app/api/lobbies/route.test.ts`
 - `src/app/api/lobbies/[lobbyId]/join/route.test.ts`
-- Latest result: `33` tests passing.
-- Latest result: `31` tests passing.
-- Latest result: `30` tests passing.
+- Added remove/leave player tests:
+- `src/application/game-session-service.test.ts` (remove player)
+- `src/app/api/games/[lobbyId]/commands/route.test.ts` (`remove_player`, `leave_lobby`)
+- Latest result: `37` tests passing.
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -140,12 +141,10 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Rules were transcribed directly from session confirmations.
 
 ## 13. Final Risks And Follow-Ups
-- Next.js scaffold exists with minimal API boundaries and demo seed/read flow.
+- Next.js scaffold exists with API boundaries and baseline lobby/round controls.
 - Boundary validation and auth not implemented yet.
 - Need websocket transport and auth integration.
-- In-memory game store resets on server restart; persistence adapter still pending.
-- Runtime now supports repo driver switch (`GAME_SESSION_REPO=memory|prisma`); Prisma adapter implemented.
+- Runtime supports repo driver switch (`GAME_SESSION_REPO=memory|prisma|auto`); Prisma adapter implemented.
 - Production policy locked: `NODE_ENV=production` requires `GAME_SESSION_REPO=prisma` (fail fast otherwise).
 - Real lobby create/join APIs now exist; demo-only seed path is no longer the sole entrypoint.
-- Host-transfer/disconnect timeout policies are still unimplemented at domain/application level.
 - Host pause-extension behavior is implemented for host-disconnect pause flow.

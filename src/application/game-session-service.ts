@@ -17,6 +17,7 @@ import {
   closeVotingAndResolve,
   endDiscussion,
   finalizeRound,
+  removePlayer,
   setPlayerConnection,
   revealQuestion,
   extendHostDisconnectPause,
@@ -287,6 +288,21 @@ export class GameSessionService {
     }
 
     const next = extendHostDisconnectPause(stateResult.value);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+
+    await this.repo.save(next.value);
+    return ok(next.value);
+  }
+
+  async removePlayer(lobbyId: LobbyId, playerId: PlayerId): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+
+    const next = removePlayer(stateResult.value, playerId);
     if (!next.ok) {
       return fromDomain(next);
     }

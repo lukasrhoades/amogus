@@ -386,4 +386,42 @@ describe("game command route", () => {
     expect(finalTimeoutJson.state.status).toBe("ended");
     expect(finalTimeoutJson.state.phase).toBe("game_over");
   });
+
+  it("removes a player from lobby via admin remove_player command", async () => {
+    await seedDemoLobby();
+
+    const response = await postCommand("demo-lobby", {
+      type: "remove_player",
+      payload: {
+        playerId: "p5",
+      },
+    });
+    const json = (await response.json()) as {
+      ok: boolean;
+      state: { players: Array<{ id: string }> };
+    };
+
+    expect(response.status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(json.state.players.some((p) => p.id === "p5")).toBe(false);
+  });
+
+  it("supports player self-leave via leave_lobby command", async () => {
+    await seedDemoLobby();
+
+    const response = await postCommand("demo-lobby", {
+      type: "leave_lobby",
+      payload: {
+        playerId: "p4",
+      },
+    });
+    const json = (await response.json()) as {
+      ok: boolean;
+      state: { players: Array<{ id: string }> };
+    };
+
+    expect(response.status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(json.state.players.some((p) => p.id === "p4")).toBe(false);
+  });
 });
