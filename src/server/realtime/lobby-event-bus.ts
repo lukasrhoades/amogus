@@ -29,7 +29,16 @@ export class LobbyEventBus {
     }
 
     listeners.forEach((listener) => {
-      listener(state);
+      try {
+        listener(state);
+      } catch {
+        // Drop failing listeners so stale streams cannot crash publishers.
+        listeners.delete(listener);
+      }
     });
+
+    if (listeners.size === 0) {
+      this.listenersByLobby.delete(state.lobbyId);
+    }
   }
 }

@@ -17,28 +17,54 @@ export async function GET(
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const encoder = new TextEncoder();
+      let closed = false;
+      let heartbeat: ReturnType<typeof setInterval> | null = null;
+      let unsubscribe: (() => void) | null = null;
+
+      const cleanup = () => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        if (heartbeat !== null) {
+          clearInterval(heartbeat);
+          heartbeat = null;
+        }
+        unsubscribe?.();
+        unsubscribe = null;
+        try {
+          controller.close();
+        } catch {
+          // Ignore duplicate close races.
+        }
+      };
+
+      const safeEnqueue = (payload: string) => {
+        if (closed) {
+          return;
+        }
+        try {
+          controller.enqueue(encoder.encode(payload));
+        } catch {
+          cleanup();
+        }
+      };
 
       const existing = await runtime.gameService.get(lobbyId);
       if (existing.ok) {
-        controller.enqueue(
-          encoder.encode(sseData({ type: "state", state: serializeGameState(existing.value, session?.playerId) })),
-        );
+        safeEnqueue(sseData({ type: "state", state: serializeGameState(existing.value, session?.playerId) }));
       }
 
-      const unsubscribe = runtime.lobbyEvents.subscribe(lobbyId, (state) => {
-        controller.enqueue(
-          encoder.encode(sseData({ type: "state", state: serializeGameState(state, session?.playerId) })),
-        );
+      unsubscribe = runtime.lobbyEvents.subscribe(lobbyId, (state) => {
+        safeEnqueue(sseData({ type: "state", state: serializeGameState(state, session?.playerId) }));
       });
 
-      const heartbeat = setInterval(() => {
-        controller.enqueue(encoder.encode(": heartbeat\n\n"));
+      heartbeat = setInterval(() => {
+        safeEnqueue(": heartbeat\n\n");
       }, 15000);
 
       request.signal.addEventListener("abort", () => {
-        clearInterval(heartbeat);
-        unsubscribe();
-        controller.close();
+        cleanup();
       });
     },
   });

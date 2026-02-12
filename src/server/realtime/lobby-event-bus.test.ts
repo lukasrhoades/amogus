@@ -46,4 +46,22 @@ describe("LobbyEventBus", () => {
     bus.publish(state);
     expect(count).toBe(1);
   });
+
+  it("drops throwing listeners and keeps healthy listeners active", () => {
+    const bus = new LobbyEventBus();
+    const state = createInitialGameState({ lobbyId: "l1", players: players(), settings: settings() });
+
+    let healthyCount = 0;
+    bus.subscribe("l1", () => {
+      throw new Error("stream closed");
+    });
+    bus.subscribe("l1", () => {
+      healthyCount += 1;
+    });
+
+    bus.publish(state);
+    bus.publish(state);
+
+    expect(healthyCount).toBe(2);
+  });
 });
