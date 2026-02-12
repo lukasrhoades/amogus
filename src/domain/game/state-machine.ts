@@ -137,7 +137,9 @@ function activePlayerIdsForRound(
   questionOwnerId: PlayerId,
   roundPolicy: RoundPolicy,
 ): { activePlayerIds: PlayerId[]; satOutPlayerId: PlayerId | null } {
-  const playerIds = Object.keys(state.players);
+  const playerIds = Object.values(state.players)
+    .filter((player) => player.connected)
+    .map((player) => player.id);
   const playerCount = playerIds.length;
   const shouldSitOut = roundPolicy.eligibilityEnabled && playerCount >= 5 && state.players[questionOwnerId] !== undefined;
 

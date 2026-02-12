@@ -176,7 +176,9 @@ export class GameSessionService {
     }
     const state = stateResult.value;
 
-    const ownerIds = Object.keys(state.players);
+    const ownerIds = Object.values(state.players)
+      .filter((player) => player.connected)
+      .map((player) => player.id);
     const allPairs = await this.questionPairs.listByOwnerIds(ownerIds);
     const availablePairs = state.settings.questionReuseEnabled
       ? allPairs
@@ -246,7 +248,9 @@ export class GameSessionService {
     roundPolicy: RoundPolicy,
     impostorCount: ImpostorCount,
   ): ServiceResult<RoundRoleAssignment> {
-    const playerIds = Object.keys(state.players);
+    const playerIds = Object.values(state.players)
+      .filter((player) => player.connected)
+      .map((player) => player.id);
     const activePlayerIds =
       roundPolicy.eligibilityEnabled && playerIds.length >= 5 && state.players[questionPair.ownerId] !== undefined
         ? playerIds.filter((id) => id !== questionPair.ownerId)

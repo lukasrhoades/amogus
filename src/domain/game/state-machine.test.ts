@@ -151,6 +151,38 @@ describe("startRound eligibility behavior", () => {
     expect(result.value.currentRound?.satOutPlayerId).toBeNull();
     expect(result.value.currentRound?.activePlayerIds).toEqual(["p1", "p2", "p3", "p4"]);
   });
+
+  it("requires at least 4 connected players for a round", () => {
+    const base = createInitialGameState({
+      lobbyId: "l1",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+    const withDisconnectedP4 = {
+      ...base,
+      players: {
+        ...base.players,
+        p4: {
+          ...base.players.p4!,
+          connected: false,
+        },
+      },
+    };
+
+    const result = startRound(withDisconnectedP4, {
+      selection: { questionPair: defaultQuestion("p1"), impostorCount: 1 },
+      roundPolicy: { eligibilityEnabled: false, allowVoteChanges: true },
+      roleAssignment: assignment([
+        ["p1", "crew"],
+        ["p2", "impostor"],
+        ["p3", "crew"],
+      ]),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("insufficient_players");
+  });
 });
 
 describe("voting constraints and tie resolution", () => {

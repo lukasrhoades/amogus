@@ -178,6 +178,27 @@ describe("GameSessionService", () => {
     expect(started.value.currentRound?.impostorCount).toBe(1);
   });
 
+  it("uses only connected players for auto-round question pool", async () => {
+    const gameRepo = new InMemoryGameSessionRepo();
+    const questionRepo = new InMemoryQuestionPairRepo();
+    const service = new GameSessionService(gameRepo, {}, questionRepo, () => 0.4);
+    const initial = createInitialGameState({
+      lobbyId: "l2b",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+    await service.create(initial);
+
+    await questionRepo.create(defaultQuestion("p4"));
+    const disconnected = await service.setPlayerConnection("l2b", "p4", false, 1000);
+    expect(disconnected.ok).toBe(true);
+
+    const started = await service.startRoundAuto("l2b");
+    expect(started.ok).toBe(false);
+    if (started.ok) return;
+    expect(started.error.code).toBe("question_pool_empty");
+  });
+
   it("deletes lobby on host disconnect timeout without transfer", async () => {
     const gameRepo = new InMemoryGameSessionRepo();
     const service = new GameSessionService(gameRepo);

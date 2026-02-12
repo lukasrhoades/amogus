@@ -484,6 +484,8 @@ export default function HomePage() {
   const canHostFinalizeRound = isHost && snapshot?.phase === "round_result";
   const removablePlayers = (snapshot?.players ?? []).filter((player) => player.id !== session?.userId);
   const hasValidVoteTarget = voteTargets.some((target) => target.id === voteTargetId);
+  const connectedPlayers = (snapshot?.players ?? []).filter((player) => player.connected);
+  const canHostAttemptStartRound = canHostStartRound && connectedPlayers.length >= 4;
 
   useEffect(() => {
     if (voteTargets.length === 0) {
@@ -938,6 +940,14 @@ export default function HomePage() {
             </p>
           ))}
         </div>
+        {isHost && canHostStartRound ? (
+          <p>
+            Start readiness: {connectedPlayers.length}/4+ connected players required
+            {connectedPlayers.length < 4
+              ? " (need more connected players)"
+              : " (ready to start, if question pool has available pairs)"}
+          </p>
+        ) : null}
 
         {round !== null && round.trueQuestion !== null ? <p>True question: {round.trueQuestion}</p> : null}
         {round !== null && round.revealedAnswers !== null ? (
@@ -973,7 +983,7 @@ export default function HomePage() {
         <p>{message}</p>
         <p>
           {canHostStartRound ? (
-            <button type="button" onClick={startAutoRound}>
+            <button type="button" onClick={startAutoRound} disabled={!canHostAttemptStartRound}>
               Start Round (Host)
             </button>
           ) : null}{" "}
