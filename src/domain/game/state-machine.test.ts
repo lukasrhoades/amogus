@@ -516,16 +516,14 @@ describe("host disconnect rules", () => {
     expect(fourthVote.value.status).toBe("waiting");
   });
 
-  it("ends game on host timeout when connected players drop below four", () => {
+  it("ends game on host timeout when host remains disconnected", () => {
     const state = createInitialGameState({
       lobbyId: "l1",
       players: players(5),
       settings: defaultSettings(),
     });
 
-    let next = expectOk(setPlayerConnection(state, "p1", false, 1000));
-    next = expectOk(setPlayerConnection(next, "p4", false, 1500));
-    next = expectOk(setPlayerConnection(next, "p5", false, 1500));
+    const next = expectOk(setPlayerConnection(state, "p1", false, 1000));
 
     const timedOut = applyHostDisconnectTimeout(next, 301000);
     expect(timedOut.ok).toBe(true);
@@ -533,6 +531,7 @@ describe("host disconnect rules", () => {
 
     expect(timedOut.value.status).toBe("ended");
     expect(timedOut.value.phase).toBe("game_over");
+    expect(timedOut.value.hostDisconnection).toBeNull();
   });
 
   it("extends host disconnect timeout window to paused watchdog limit", () => {

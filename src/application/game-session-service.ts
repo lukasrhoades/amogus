@@ -102,6 +102,34 @@ export class GameSessionService {
     return ok({ deleted: true });
   }
 
+  async cleanupIdleLobbies(input: { nowMs?: number }): Promise<number> {
+    const nowMs = input.nowMs ?? Date.now();
+    const emptyLobbyCutoff = new Date(nowMs - 5 * 60 * 1000);
+    const staleLobbyIds = await this.repo.listLobbyIdsUpdatedBefore(emptyLobbyCutoff);
+    const allLobbyIds = await this.repo.listLobbyIds();
+    const candidateIds = new Set<LobbyId>([...staleLobbyIds, ...allLobbyIds]);
+    let deletedCount = 0;
+    for (const lobbyId of candidateIds) {
+      const state = await this.repo.getByLobbyId(lobbyId);
+      if (state === null) {
+        continue;
+      }
+      const connectedPlayers = Object.values(state.players).filter((player) => player.connected).length;
+      const hostTimedOut =
+        state.hostDisconnection !== null && nowMs >= state.hostDisconnection.deadlineMs;
+      const emptyAndStale = connectedPlayers === 0 && staleLobbyIds.includes(lobbyId);
+      if (!hostTimedOut && !emptyAndStale) {
+        continue;
+      }
+
+      const deleted = await this.repo.deleteByLobbyId(lobbyId);
+      if (deleted) {
+        deletedCount += 1;
+      }
+    }
+    return deletedCount;
+  }
+
   async get(lobbyId: LobbyId): Promise<ServiceResult<GameState>> {
     const state = await this.repo.getByLobbyId(lobbyId);
     if (state === null) {
@@ -424,6 +452,15 @@ export class GameSessionService {
     const next = applyHostDisconnectTimeout(stateResult.value, nowMs);
     if (!next.ok) {
       return fromDomain(next);
+    }
+
+    const timedOutWithoutTransfer =
+      stateResult.value.hostDisconnection !== null &&
+      nowMs >= stateResult.value.hostDisconnection.deadlineMs &&
+      next.value.status === "ended";
+    if (timedOutWithoutTransfer) {
+      await this.repo.deleteByLobbyId(lobbyId);
+      return ok(next.value);
     }
 
     await this.saveAndNotify(next.value);

@@ -37,4 +37,23 @@ export class PrismaGameSessionRepo implements GameSessionRepo {
     });
     return result.count > 0;
   }
+
+  async listLobbyIds(): Promise<LobbyId[]> {
+    const rows = await this.prisma.gameSession.findMany({
+      select: { lobbyId: true },
+    });
+    return rows.map((row) => row.lobbyId);
+  }
+
+  async listLobbyIdsUpdatedBefore(cutoff: Date): Promise<LobbyId[]> {
+    const rows = await this.prisma.gameSession.findMany({
+      where: {
+        updatedAt: {
+          lt: cutoff,
+        },
+      },
+      select: { lobbyId: true },
+    });
+    return rows.map((row) => row.lobbyId);
+  }
 }

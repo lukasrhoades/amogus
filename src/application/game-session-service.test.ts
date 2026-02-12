@@ -171,4 +171,52 @@ describe("GameSessionService", () => {
     expect(started.value.phase).toBe("prompting");
     expect(started.value.currentRound?.impostorCount).toBe(1);
   });
+
+  it("deletes lobby on host disconnect timeout without transfer", async () => {
+    const gameRepo = new InMemoryGameSessionRepo();
+    const service = new GameSessionService(gameRepo);
+    const initial = createInitialGameState({
+      lobbyId: "l3",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+    await service.create(initial);
+
+    const disconnected = await service.setPlayerConnection("l3", "p1", false, 1000);
+    expect(disconnected.ok).toBe(true);
+
+    const timedOut = await service.applyHostDisconnectTimeout("l3", 301000);
+    expect(timedOut.ok).toBe(true);
+    if (!timedOut.ok) return;
+    expect(timedOut.value.status).toBe("ended");
+
+    const after = await service.get("l3");
+    expect(after.ok).toBe(false);
+  });
+
+  it("deletes empty lobby after 5 minutes with no reconnect", async () => {
+    let now = 1000;
+    const gameRepo = new InMemoryGameSessionRepo(() => now);
+    const service = new GameSessionService(gameRepo);
+    const initial = createInitialGameState({
+      lobbyId: "l4",
+      players: players(4),
+      settings: defaultSettings(),
+    });
+    await service.create(initial);
+
+    for (const playerId of ["p1", "p2", "p3", "p4"] as const) {
+      const updated = await service.setPlayerConnection("l4", playerId, false, now);
+      expect(updated.ok).toBe(true);
+      now += 10;
+    }
+
+    now = 4 * 60 * 1000;
+    const early = await service.cleanupIdleLobbies({ nowMs: now });
+    expect(early).toBe(0);
+
+    now = 6 * 60 * 1000;
+    const deleted = await service.cleanupIdleLobbies({ nowMs: now });
+    expect(deleted).toBe(1);
+  });
 });

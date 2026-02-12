@@ -95,6 +95,22 @@ export default function HomePage() {
   >([]);
 
   useEffect(() => {
+    const run = async () => {
+      const response = await fetch("/api/session", { method: "GET" });
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as { session: Session | null };
+      if (payload.session !== null) {
+        setSession(payload.session);
+        setSessionDisplayName(payload.session.displayName);
+      }
+    };
+
+    void run();
+  }, []);
+
+  useEffect(() => {
     if (activeLobbyId.trim() === "") {
       return;
     }
@@ -140,6 +156,12 @@ export default function HomePage() {
     setMessage(`Session ready: ${payload.session.displayName} (${payload.session.playerId})`);
     await loadQuestionPairs();
   }
+
+  useEffect(() => {
+    if (session !== null) {
+      void loadQuestionPairs();
+    }
+  }, [session]);
 
   async function createLobby() {
     const response = await fetch("/api/lobbies", {

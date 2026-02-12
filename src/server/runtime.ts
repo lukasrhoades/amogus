@@ -24,6 +24,27 @@ type GlobalWithRuntime = typeof globalThis & {
   [runtimeSingleton]?: Runtime;
 };
 
+const CLEANUP_INTERVAL_MS = 60 * 1000;
+let lastCleanupMs = 0;
+let cleanupInFlight: Promise<void> | null = null;
+
+function maybeRunIdleCleanup(runtime: Runtime): void {
+  const now = Date.now();
+  if (cleanupInFlight !== null || now - lastCleanupMs < CLEANUP_INTERVAL_MS) {
+    return;
+  }
+  lastCleanupMs = now;
+  cleanupInFlight = runtime.gameService
+    .cleanupIdleLobbies({ nowMs: now })
+    .then(() => undefined)
+    .catch(() => {
+      // Cleanup failures should not take down runtime request handling.
+    })
+    .finally(() => {
+      cleanupInFlight = null;
+    });
+}
+
 function createRuntime(): Runtime {
   const { gameSessionRepo, questionPairRepo } = createRepos();
   const lobbyEvents = new LobbyEventBus();
@@ -150,6 +171,38 @@ class AutoFallbackGameSessionRepo implements GameSessionRepo {
       return this.fallback.deleteByLobbyId(lobbyId);
     }
   }
+
+  async listLobbyIds(): Promise<LobbyId[]> {
+    if (this.useFallback) {
+      return this.fallback.listLobbyIds();
+    }
+
+    try {
+      return await this.primary.listLobbyIds();
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      return this.fallback.listLobbyIds();
+    }
+  }
+
+  async listLobbyIdsUpdatedBefore(cutoff: Date): Promise<LobbyId[]> {
+    if (this.useFallback) {
+      return this.fallback.listLobbyIdsUpdatedBefore(cutoff);
+    }
+
+    try {
+      return await this.primary.listLobbyIdsUpdatedBefore(cutoff);
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+      this.useFallback = true;
+      return this.fallback.listLobbyIdsUpdatedBefore(cutoff);
+    }
+  }
 }
 
 class AutoFallbackQuestionPairRepo implements QuestionPairRepo {
@@ -231,6 +284,7 @@ export function getRuntime(): Runtime {
   if (globalRef[runtimeSingleton] === undefined) {
     globalRef[runtimeSingleton] = createRuntime();
   }
+  maybeRunIdleCleanup(globalRef[runtimeSingleton]);
   return globalRef[runtimeSingleton];
 }
 

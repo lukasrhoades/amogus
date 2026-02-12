@@ -135,6 +135,10 @@ const commandSchema = z.discriminatedUnion("type", [
 type Command = z.infer<typeof commandSchema>;
 
 function domainErrorStatus(code: string): number {
+  if (code === "forbidden") {
+    return 403;
+  }
+
   if (code === "game_not_found") {
     return 404;
   }
@@ -182,11 +186,12 @@ async function runCommand(lobbyId: string, command: Command, sessionPlayerId: st
     }
     const caller = state.value.players[sessionPlayerId];
     if (caller === undefined || !caller.isHost) {
+      const hostId = Object.values(state.value.players).find((player) => player.isHost)?.id ?? "unknown";
       return {
         ok: false as const,
         error: {
-          code: "invalid_round" as const,
-          message: "Host privileges required for this command",
+          code: "forbidden" as const,
+          message: `Host privileges required for this command (session=${sessionPlayerId}, host=${hostId})`,
         },
       };
     }

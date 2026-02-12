@@ -785,16 +785,12 @@ export function applyHostDisconnectTimeout(
     return ok(state);
   }
 
-  const connectedPlayers = Object.values(state.players).filter((player) => player.connected).length;
-  if (connectedPlayers >= MIN_ACTIVE_PLAYERS) {
-    return ok(state);
-  }
-
   return ok({
     ...state,
     status: "ended",
     phase: "game_over",
     currentRound: null,
+    hostDisconnection: null,
   });
 }
 

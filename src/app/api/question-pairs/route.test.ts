@@ -6,11 +6,12 @@ import { resetRuntimeForTests } from "../../../server/runtime";
 import { encodeSessionCookieValue } from "../../../server/session/session";
 
 const session = { playerId: "p1", displayName: "Host" };
+const session2 = { playerId: "p2", displayName: "Avery" };
 
-function authHeaders() {
+function authHeaders(s = session) {
   return {
     "Content-Type": "application/json",
-    Cookie: `sdg_session=${encodeSessionCookieValue(session)}`,
+    Cookie: `sdg_session=${encodeSessionCookieValue(s)}`,
   };
 }
 
@@ -67,5 +68,48 @@ describe("question pair routes", () => {
     );
 
     expect(create.status).toBe(400);
+  });
+
+  it("lists only pairs owned by current session", async () => {
+    await createPair(
+      new Request("http://localhost/api/question-pairs", {
+        method: "POST",
+        headers: authHeaders(session),
+        body: JSON.stringify({
+          promptA: { text: "A1", target: "crew" },
+          promptB: { text: "A2", target: "impostor" },
+        }),
+      }),
+    );
+    await createPair(
+      new Request("http://localhost/api/question-pairs", {
+        method: "POST",
+        headers: authHeaders(session2),
+        body: JSON.stringify({
+          promptA: { text: "B1", target: "both" },
+          promptB: { text: "B2", target: "crew" },
+        }),
+      }),
+    );
+
+    const list1 = await listPairs(
+      new Request("http://localhost/api/question-pairs", {
+        method: "GET",
+        headers: authHeaders(session),
+      }),
+    );
+    const list1Json = (await list1.json()) as { pairs: Array<{ promptA: { text: string } }> };
+    expect(list1Json.pairs).toHaveLength(1);
+    expect(list1Json.pairs[0]?.promptA.text).toBe("A1");
+
+    const list2 = await listPairs(
+      new Request("http://localhost/api/question-pairs", {
+        method: "GET",
+        headers: authHeaders(session2),
+      }),
+    );
+    const list2Json = (await list2.json()) as { pairs: Array<{ promptA: { text: string } }> };
+    expect(list2Json.pairs).toHaveLength(1);
+    expect(list2Json.pairs[0]?.promptA.text).toBe("B1");
   });
 });

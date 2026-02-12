@@ -156,7 +156,11 @@ Host disconnect:
 2. Host has 5 minutes to reconnect.
 3. Non-host players can initiate host-transfer vote while host is disconnected.
 4. Host-transfer requires unanimous vote of currently connected non-host players.
-5. If player count falls below 4 and 5-minute window expires, game ends.
+5. If 5-minute host window expires without reconnection or host transfer, lobby is deleted.
+
+Idle lobby cleanup:
+1. If connected player count becomes 0, lobby is scheduled for deletion.
+2. If no one rejoins within 5 minutes, lobby is deleted.
 
 ## 16. Admin Actions
 Host may:

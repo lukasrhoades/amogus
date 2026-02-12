@@ -136,7 +136,7 @@ describe("game command route", () => {
       p2Session,
     );
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(403);
   });
 
   it("runs host start_round and player submit/cast commands using session identity", async () => {
