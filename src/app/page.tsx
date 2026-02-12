@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Session = {
   playerId: string;
@@ -74,6 +74,36 @@ export default function HomePage() {
   const [removePlayerId, setRemovePlayerId] = useState<string>("p5");
   const [answerText, setAnswerText] = useState<string>("demo-answer");
   const [voteTargetId, setVoteTargetId] = useState<string>("p2");
+  const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (activeLobbyId.trim() === "") {
+      return;
+    }
+
+    const source = new EventSource(`/api/games/${activeLobbyId}/events`);
+    source.onopen = () => {
+      setRealtimeConnected(true);
+    };
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as { type?: string; state?: LobbySnapshot };
+        if (payload.type === "state" && payload.state !== undefined) {
+          setSnapshot(payload.state);
+        }
+      } catch {
+        // Ignore malformed event payloads.
+      }
+    };
+    source.onerror = () => {
+      setRealtimeConnected(false);
+    };
+
+    return () => {
+      source.close();
+      setRealtimeConnected(false);
+    };
+  }, [activeLobbyId]);
 
   async function createSession() {
     const response = await fetch("/api/session", {
@@ -205,6 +235,7 @@ export default function HomePage() {
           </button>
         </p>
         <p>{session === null ? "No session." : `Session: ${session.displayName} (${session.playerId})`}</p>
+        <p>Realtime: {realtimeConnected ? "connected" : "disconnected"}</p>
 
         <h2>Lobby Setup</h2>
         <p>

@@ -4,6 +4,7 @@ import { GameSessionService } from "../application/game-session-service";
 import { GameState, LobbyId } from "../domain/game/types";
 import { GameSessionRepo } from "../ports/game-session-repo";
 import { getPrismaClient } from "./prisma-client";
+import { LobbyEventBus } from "./realtime/lobby-event-bus";
 
 const runtimeSingleton = Symbol.for("sdg.runtime");
 
@@ -11,6 +12,7 @@ type RepoDriverMode = "memory" | "prisma" | "auto";
 
 type Runtime = {
   gameService: GameSessionService;
+  lobbyEvents: LobbyEventBus;
 };
 
 type GlobalWithRuntime = typeof globalThis & {
@@ -19,8 +21,14 @@ type GlobalWithRuntime = typeof globalThis & {
 
 function createRuntime(): Runtime {
   const repo = createGameSessionRepo();
+  const lobbyEvents = new LobbyEventBus();
   return {
-    gameService: new GameSessionService(repo),
+    gameService: new GameSessionService(repo, {
+      onStateSaved: (state) => {
+        lobbyEvents.publish(state);
+      },
+    }),
+    lobbyEvents,
   };
 }
 

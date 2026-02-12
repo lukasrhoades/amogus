@@ -38,6 +38,10 @@ export type ServiceResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: ServiceError };
 
+export type GameSessionServiceHooks = {
+  onStateSaved?: (state: GameState) => void;
+};
+
 function ok<T>(value: T): ServiceResult<T> {
   return { ok: true, value };
 }
@@ -61,10 +65,18 @@ function fromDomain<T>(result: Result<T>): ServiceResult<T> {
 }
 
 export class GameSessionService {
-  constructor(private readonly repo: GameSessionRepo) {}
+  constructor(
+    private readonly repo: GameSessionRepo,
+    private readonly hooks: GameSessionServiceHooks = {},
+  ) {}
+
+  private async saveAndNotify(state: GameState): Promise<void> {
+    await this.repo.save(state);
+    this.hooks.onStateSaved?.(state);
+  }
 
   async create(state: GameState): Promise<void> {
-    await this.repo.save(state);
+    await this.saveAndNotify(state);
   }
 
   async get(lobbyId: LobbyId): Promise<ServiceResult<GameState>> {
@@ -94,7 +106,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -109,7 +121,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -124,7 +136,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -139,7 +151,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -154,7 +166,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -169,7 +181,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -187,7 +199,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -202,7 +214,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -220,7 +232,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -240,7 +252,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -259,7 +271,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -277,7 +289,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -292,7 +304,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 
@@ -307,7 +319,7 @@ export class GameSessionService {
       return fromDomain(next);
     }
 
-    await this.repo.save(next.value);
+    await this.saveAndNotify(next.value);
     return ok(next.value);
   }
 }

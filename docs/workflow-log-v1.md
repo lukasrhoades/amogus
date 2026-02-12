@@ -30,6 +30,8 @@ Implemented in:
 - `src/server/lobby/defaults.ts`
 - `src/server/session/session.ts`
 - `src/app/api/session/route.ts`
+- `src/server/realtime/lobby-event-bus.ts`
+- `src/app/api/games/[lobbyId]/events/route.ts`
 
 DSL-style commands (pure domain transitions):
 - `createInitialGameState`
@@ -69,6 +71,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Runtime adapter selection now supports `GAME_SESSION_REPO=auto`, which attempts Prisma and falls back to in-memory when DB is unavailable.
 - Route tests pin `GAME_SESSION_REPO=memory` to avoid environment-coupled failures.
 - Session identity is enforced at route boundaries using cookie-backed session parsing.
+- Realtime boundary added: SSE stream per lobby with in-process event bus fanout.
 
 ## 8. Security Log
 - Dependencies introduced:
@@ -132,7 +135,9 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - `src/app/api/games/[lobbyId]/commands/route.test.ts` (`remove_player`, `leave_lobby`)
 - Added session route tests:
 - `src/app/api/session/route.test.ts`
-- Latest result: `32` tests passing.
+- Added realtime bus tests:
+- `src/server/realtime/lobby-event-bus.test.ts`
+- Latest result: `33` tests passing.
 
 ## 10. Red-Team Log
 - Deferred until API/socket boundaries exist.
@@ -149,6 +154,7 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - Next.js scaffold exists with API boundaries and baseline lobby/round controls.
 - Boundary validation is implemented and lightweight session auth bootstrap exists.
 - Need websocket transport and auth integration.
+- SSE realtime integration is implemented for live lobby updates; websocket transport remains optional future enhancement.
 - Runtime supports repo driver switch (`GAME_SESSION_REPO=memory|prisma|auto`); Prisma adapter implemented.
 - Production policy locked: `NODE_ENV=production` requires `GAME_SESSION_REPO=prisma` (fail fast otherwise).
 - Real lobby create/join APIs now exist; demo-only seed path is no longer the sole entrypoint.
