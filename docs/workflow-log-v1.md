@@ -226,3 +226,17 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - pre-game host setup view emphasizes presets/settings and a primary `Start Game` action
 - in-game host admin controls moved to a toggleable side panel
 - Improved readability/layout styles in `src/app/globals.css` for game-night use (cards, menu row, responsive side panel).
+
+## 17. Deduire Theming + UI Simplification
+- Renamed player-facing branding to `Deduire` in `src/app/page.tsx`.
+- Removed duplicated menu/action content and duplicate session/status text in main flow.
+- Auth flow now defaults to `login` with empty fields and a small register link toggle.
+- Reduced noisy success messaging; UI now surfaces errors primarily.
+- Implemented a noir-minimal theme in `src/app/globals.css` (slate and burgundy accents, serif typography, subtle gradients).
+- Updated lobby and room presentation:
+- mobile-first cards and simpler navigation (`Current Lobbies` / `My Question Pairs`)
+- auto-enter room behavior preserved on create/join
+- host/player list rendered in a virtual-table layout
+- host-only progress indicators use `OK/X` per player and progress bars for answer/vote phases
+- host pre-game flow is preset-first, with advanced settings hidden behind an edit toggle
+- in-game host actions moved behind a toggleable admin drawer with quick actions + advanced controls.
