@@ -1088,9 +1088,9 @@ export default function HomePage() {
                       {inGameRoom ? (
                         <div className="card slim-card">
                           {snapshot.phase === "round_result" ? (
-                            <div className="card slim-card">
-                              <h3>Round Result</h3>
-                              <p>
+                            <div className="card slim-card round-result-card">
+                              <p className="round-result-kicker">Round Result</p>
+                              <p className="round-result-line">
                                 Eliminated:{" "}
                                 {round?.eliminatedPlayerId === null || round?.eliminatedPlayerId === undefined
                                   ? "No one"
@@ -1099,13 +1099,14 @@ export default function HomePage() {
                               {round?.revealedRoles !== null && round?.revealedRoles !== undefined ? (
                                 <>
                                   {Object.entries(round.revealedRoles).map(([playerId, role]) => (
-                                    <p key={playerId}>
-                                      {snapshot.players.find((player) => player.id === playerId)?.displayName ?? playerId}: {role}
+                                    <p key={playerId} className="round-result-line">
+                                      {snapshot.players.find((player) => player.id === playerId)?.displayName ?? playerId}:{" "}
+                                      <span className={`role-chip ${role === "impostor" ? "role-impostor" : "role-crew"}`}>{role}</span>
                                     </p>
                                   ))}
                                 </>
                               ) : (
-                                <p>Roles will appear once round result is finalized.</p>
+                                <p className="muted">Roles will appear once round result is finalized.</p>
                               )}
                             </div>
                           ) : null}

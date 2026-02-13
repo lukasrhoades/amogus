@@ -213,6 +213,46 @@ p {
   transition: width 220ms ease;
 }
 
+.round-result-card {
+  border-width: 2px;
+  border-color: #a54b64;
+  background: linear-gradient(180deg, #fff8f8 0%, #f8eeef 100%);
+}
+
+.round-result-kicker {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7e2b43;
+  margin: 0 0 0.3rem;
+}
+
+.round-result-line {
+  font-size: 1.02rem;
+  margin: 0.34rem 0;
+}
+
+.role-chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid;
+  font-size: 0.84rem;
+  text-transform: capitalize;
+}
+
+.role-impostor {
+  color: #89212a;
+  border-color: #bb8e93;
+  background: #faecec;
+}
+
+.role-crew {
+  color: #245d42;
+  border-color: #97bba7;
+  background: #e9f4ec;
+}
+
 .advanced-block {
   border-top: 1px dashed var(--line);
   margin-top: 0.7rem;
@@ -348,5 +388,10 @@ button:disabled {
 
   .lobby-badge {
     align-self: flex-start;
+  }
+
+  .round-result-line {
+    font-size: 1.06rem;
+    line-height: 1.5;
   }
 }
