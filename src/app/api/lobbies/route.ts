@@ -62,3 +62,28 @@ export async function POST(request: Request) {
     { status: 201 },
   );
 }
+
+export async function GET(request: Request) {
+  const viewer = await requireSession(request);
+  if (viewer === null) {
+    return NextResponse.json(
+      {
+        error: "no_session",
+        message: "Create a session before viewing lobbies",
+      },
+      { status: 401 },
+    );
+  }
+
+  const lobbies = await getRuntime().gameService.listLobbies();
+  return NextResponse.json({
+    lobbies: lobbies.map((lobby) => ({
+      lobbyId: lobby.lobbyId,
+      phase: lobby.phase,
+      status: lobby.status,
+      playerCount: lobby.playerCount,
+      connectedPlayerCount: lobby.connectedPlayerCount,
+      hostDisplayName: lobby.hostDisplayName,
+    })),
+  });
+}

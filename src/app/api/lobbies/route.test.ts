@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { POST as createLobby } from "./route";
+import { GET as listLobbies, POST as createLobby } from "./route";
 import { GET as getLobby } from "../games/[lobbyId]/route";
 import { resetRuntimeForTests } from "../../../server/runtime";
 import { authCookieFor } from "../test-helpers/auth";
@@ -40,5 +40,39 @@ describe("lobbies create route", () => {
     expect(lobbyJson.players).toHaveLength(1);
     expect(lobbyJson.players[0]?.id).toBe("host-1");
     expect(lobbyJson.players[0]?.isHost).toBe(true);
+  });
+
+  it("lists active lobbies for authenticated users", async () => {
+    const hostCookie = await authCookieFor("host-2");
+    const createResponse = await createLobby(
+      new Request("http://localhost/api/lobbies", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: hostCookie,
+        },
+        body: JSON.stringify({
+          lobbyId: "beta123",
+        }),
+      }),
+    );
+    expect(createResponse.status).toBe(201);
+
+    const listResponse = await listLobbies(
+      new Request("http://localhost/api/lobbies", {
+        method: "GET",
+        headers: {
+          Cookie: hostCookie,
+        },
+      }),
+    );
+    const listJson = (await listResponse.json()) as {
+      lobbies: Array<{
+        lobbyId: string;
+        hostDisplayName: string | null;
+      }>;
+    };
+    expect(listResponse.status).toBe(200);
+    expect(listJson.lobbies.some((lobby) => lobby.lobbyId === "beta123")).toBe(true);
   });
 });

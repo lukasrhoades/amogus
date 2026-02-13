@@ -213,3 +213,16 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - production env vars
 - migration command (`prisma:migrate:deploy`)
 - host-only local development flow
+
+## 16. Playable UI Restructure
+- Added authenticated lobby browsing endpoint:
+- `GET /api/lobbies` in `src/app/api/lobbies/route.ts`
+- backed by `GameSessionService.listLobbies()` in `src/application/game-session-service.ts`
+- Added route coverage in `src/app/api/lobbies/route.test.ts`.
+- Refactored home UI flow in `src/app/page.tsx`:
+- auth defaults now start in `login` mode with empty username/password fields
+- main menu with two clear options: `Current Lobbies` and `My Question Pairs`
+- lobbies view shows current lobbies list, create/join controls, and active lobby room view
+- pre-game host setup view emphasizes presets/settings and a primary `Start Game` action
+- in-game host admin controls moved to a toggleable side panel
+- Improved readability/layout styles in `src/app/globals.css` for game-night use (cards, menu row, responsive side panel).

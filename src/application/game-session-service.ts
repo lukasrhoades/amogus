@@ -57,6 +57,16 @@ export type StartRoundAutoInput = {
   impostorCountOverride?: ImpostorCount | undefined;
 };
 
+export type LobbySummary = {
+  lobbyId: LobbyId;
+  phase: GameState["phase"];
+  status: GameState["status"];
+  playerCount: number;
+  connectedPlayerCount: number;
+  hostPlayerId: PlayerId | null;
+  hostDisplayName: string | null;
+};
+
 type RoundPolicyOverride = {
   eligibilityEnabled?: boolean | undefined;
   allowVoteChanges?: boolean | undefined;
@@ -144,6 +154,35 @@ export class GameSessionService {
     }
 
     return ok(state);
+  }
+
+  async listLobbies(): Promise<LobbySummary[]> {
+    const lobbyIds = await this.repo.listLobbyIds();
+    const summaries: LobbySummary[] = [];
+    for (const lobbyId of lobbyIds) {
+      const state = await this.repo.getByLobbyId(lobbyId);
+      if (state === null) {
+        continue;
+      }
+      const players = Object.values(state.players);
+      const host = players.find((player) => player.isHost);
+      summaries.push({
+        lobbyId: state.lobbyId,
+        phase: state.phase,
+        status: state.status,
+        playerCount: players.length,
+        connectedPlayerCount: players.filter((player) => player.connected).length,
+        hostPlayerId: host?.id ?? null,
+        hostDisplayName: host?.displayName ?? null,
+      });
+    }
+
+    return summaries.sort((a, b) => {
+      if (a.connectedPlayerCount !== b.connectedPlayerCount) {
+        return b.connectedPlayerCount - a.connectedPlayerCount;
+      }
+      return a.lobbyId.localeCompare(b.lobbyId);
+    });
   }
 
   async startRound(
