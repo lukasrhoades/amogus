@@ -263,6 +263,11 @@ export default function HomePage() {
   }, [session]);
 
   useEffect(() => {
+    setErrorMessage("");
+    setInfoMessage("");
+  }, [mainView]);
+
+  useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -448,6 +453,21 @@ export default function HomePage() {
   }
 
   async function logout() {
+    if (snapshot !== null) {
+      try {
+        await fetch(`/api/games/${snapshot.lobbyId}/commands`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "leave_lobby",
+            payload: {},
+          }),
+        });
+      } catch {
+        // Ignore leave failures during logout cleanup.
+      }
+    }
+
     await fetch("/api/session", { method: "DELETE" });
     setSession(null);
     setSnapshot(null);
@@ -935,9 +955,9 @@ export default function HomePage() {
                     {lobbies.map((lobby) => (
                       <article key={lobby.lobbyId} className="lobby-card">
                         <h3>{lobby.lobbyId}</h3>
-                        <p>Players {lobby.playerCount}</p>
-                        <p>Host {lobby.hostDisplayName ?? "unknown"}</p>
-                        <p>Phase {describeLobbyPhase(lobby.phase)}</p>
+                        <p>Players: {lobby.playerCount}</p>
+                        <p>Host: {lobby.hostDisplayName ?? "unknown"}</p>
+                        <p>Phase: {describeLobbyPhase(lobby.phase)}</p>
                         <p>
                           <button
                             type="button"
