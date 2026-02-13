@@ -170,6 +170,27 @@ p {
 .seat-name {
   margin: 0;
   font-size: 0.94rem;
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+}
+
+.presence-dot {
+  width: 0.56rem;
+  height: 0.56rem;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid #7d6f67;
+}
+
+.presence-online {
+  background: #2e8f5a;
+  border-color: #1f6b41;
+}
+
+.presence-offline {
+  background: #ab3642;
+  border-color: #7a2530;
 }
 
 .status-token {

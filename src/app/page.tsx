@@ -991,6 +991,11 @@ export default function HomePage() {
                             return (
                               <div key={player.id} className="seat">
                                 <p className="seat-name">
+                                  <span
+                                    className={`presence-dot ${player.connected ? "presence-online" : "presence-offline"}`}
+                                    aria-label={player.connected ? "connected" : "disconnected"}
+                                    title={player.connected ? "Connected" : "Disconnected"}
+                                  />
                                   {player.displayName}{player.isHost ? " (H)" : ""}
                                 </p>
                                 {isHost ? <span className={`status-token ${tokenClass}`}>{status === "ok" ? "OK" : status === "x" ? "X" : "-"}</span> : null}
@@ -1357,7 +1362,17 @@ function describeCommandError(code: string, fallbackMessage: string): string {
   if (translated !== undefined) {
     return translated;
   }
-  return fallbackMessage;
+  const lower = fallbackMessage.toLowerCase();
+  if (lower.includes("already voted")) {
+    return "You already submitted your vote for this round.";
+  }
+  if (lower.includes("already submitted") && lower.includes("answer")) {
+    return "You already submitted an answer for this round.";
+  }
+  if (lower.includes("player") && lower.includes("already")) {
+    return "You already completed that action.";
+  }
+  return "That action could not be completed right now.";
 }
 
 function describeRequestError(scope: "auth" | "create_lobby" | "join_lobby" | "delete_lobby" | "create_question_pair", code: string, fallback?: string): string {
