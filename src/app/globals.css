@@ -282,6 +282,14 @@ p {
   display: block;
 }
 
+.mobile-only {
+  display: none;
+}
+
+.desktop-only {
+  display: block;
+}
+
 .side-panel {
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -388,6 +396,14 @@ button:disabled {
 
   .lobby-badge {
     align-self: flex-start;
+  }
+
+  .mobile-only {
+    display: block;
+  }
+
+  .desktop-only {
+    display: none;
   }
 
   .round-result-line {

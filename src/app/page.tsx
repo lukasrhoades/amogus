@@ -401,6 +401,19 @@ export default function HomePage() {
     return snapshot.scoreboard[session.userId]?.totalPoints ?? 0;
   }, [session, snapshot]);
 
+  function describeLobbyPhase(phase: string): string {
+    const labels: Record<string, string> = {
+      setup: "Waiting in lobby",
+      prompting: "Collecting answers",
+      reveal: "Revealing answers",
+      discussion: "Discussion",
+      voting: "Voting",
+      round_result: "Round result",
+      game_over: "Game over",
+    };
+    return labels[phase] ?? "In progress";
+  }
+
   const roundDisplay = (() => {
     if (snapshot === null) {
       return "0/0";
@@ -539,7 +552,7 @@ export default function HomePage() {
     }
   }
 
-  async function runCommand(command: CommandPayload) {
+  async function runCommand(command: CommandPayload): Promise<LobbySnapshot | null> {
     setErrorMessage("");
     setInfoMessage("");
     const response = await fetch(`/api/games/${activeLobbyId}/commands`, {
@@ -554,7 +567,7 @@ export default function HomePage() {
         setTieCandidates(payload.tieCandidates ?? []);
       }
       setErrorMessage(describeCommandError(payload.error, payload.message));
-      return;
+      return null;
     }
 
     const payload = (await response.json()) as { state: LobbySnapshot };
@@ -565,6 +578,7 @@ export default function HomePage() {
       setInfoMessage(successMessage);
     }
     await loadLobbies();
+    return payload.state;
   }
 
   async function resolveTie(choice: "auto" | string) {
@@ -590,6 +604,19 @@ export default function HomePage() {
       type: "start_round_auto",
       payload: { roundPolicy: { eligibilityEnabled: roundEligibilityEnabled } },
     });
+  }
+
+  async function finalizeRoundAndContinue() {
+    const finalizedState = await runCommand({ type: "finalize_round", payload: {} });
+    if (finalizedState === null) {
+      return;
+    }
+    if (finalizedState.phase === "setup" && finalizedState.status !== "ended") {
+      await runCommand({
+        type: "start_round_auto",
+        payload: { roundPolicy: { eligibilityEnabled: roundEligibilityEnabled } },
+      });
+    }
   }
 
   async function loadQuestionPairs() {
@@ -910,7 +937,7 @@ export default function HomePage() {
                         <h3>{lobby.lobbyId}</h3>
                         <p>Players {lobby.playerCount}</p>
                         <p>Host {lobby.hostDisplayName ?? "unknown"}</p>
-                        <p>Phase {lobby.phase}</p>
+                        <p>Phase {describeLobbyPhase(lobby.phase)}</p>
                         <p>
                           <button
                             type="button"
@@ -927,7 +954,7 @@ export default function HomePage() {
                 </div>
 
                 {snapshot !== null ? (
-                  <div className={inGameRoom && isHost ? "layout-grid" : "single-col"}>
+                  <div className={inGameRoom && (isHost || showScoreboard) ? "layout-grid" : "single-col"}>
                     <section className="card room-card">
                       <header className="room-header">
                         <div>
@@ -944,6 +971,17 @@ export default function HomePage() {
                           </p>
                         </div>
                       </header>
+
+                      {showScoreboard ? (
+                        <div className="card slim-card mobile-only">
+                          <h3>Scoreboard</h3>
+                          {snapshot.players.map((player) => (
+                            <p key={player.id}>
+                              {player.displayName}: {snapshot.scoreboard[player.id]?.totalPoints ?? 0}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
 
                       <div className="table-wrap">
                         <div className="virtual-table">
@@ -992,7 +1030,9 @@ export default function HomePage() {
                                 </button>
                               </p>
                               <p>
-                                <button type="button" onClick={startAutoRound} disabled={!canHostAttemptStartRound}>Start Game</button>
+                                <button type="button" onClick={startAutoRound} disabled={!canHostAttemptStartRound}>
+                                  {snapshot.completedRounds > 0 ? "Start Next Round" : "Start Game"}
+                                </button>
                               </p>
 
                               {showAdvancedSettings ? (
@@ -1168,109 +1208,113 @@ export default function HomePage() {
                         </div>
                       ) : null}
 
-                      {showScoreboard ? (
-                        <div className="card slim-card">
-                          <h3>Scoreboard</h3>
-                          {snapshot.players.map((player) => (
-                            <p key={player.id}>
-                              {player.displayName}: {snapshot.scoreboard[player.id]?.totalPoints ?? 0}
-                            </p>
-                          ))}
-                        </div>
-                      ) : null}
-
                       <p>
                         <button type="button" onClick={() => runCommand({ type: "leave_lobby", payload: {} })}>Leave Lobby</button>{" "}
                         {isHost ? <button type="button" onClick={deleteLobby}>Delete Lobby</button> : null}
                       </p>
                     </section>
 
-                    {isHost && inGameRoom ? (
+                    {inGameRoom && (showScoreboard || isHost) ? (
                       <aside className={`side-panel ${showHostAdmin ? "open" : ""}`}>
-                        <p>
-                          <button type="button" onClick={() => setShowHostAdmin((value) => !value)}>
-                            {showHostAdmin ? "Hide" : "Show"} Host Admin
-                          </button>
-                        </p>
+                        {showScoreboard ? (
+                          <div className="card slim-card desktop-only">
+                            <h3>Scoreboard</h3>
+                            {snapshot.players.map((player) => (
+                              <p key={player.id}>
+                                {player.displayName}: {snapshot.scoreboard[player.id]?.totalPoints ?? 0}
+                              </p>
+                            ))}
+                          </div>
+                        ) : null}
 
-                        {showHostAdmin ? (
-                          <div className="fade-in">
-                            <p>Quick actions</p>
+                        {isHost ? (
+                          <>
                             <p>
-                              {canHostRevealQuestion ? <button type="button" onClick={() => runCommand({ type: "reveal_question", payload: {} })}>Reveal Question</button> : null}
-                              {canHostRevealNextAnswer ? <button type="button" onClick={() => runCommand({ type: "reveal_next_answer", payload: {} })}>Next Answer</button> : null}
-                              {canHostStartDiscussion ? <button type="button" onClick={() => runCommand({ type: "start_discussion", payload: {} })}>Start Discussion</button> : null}
-                              {canHostEndDiscussion ? <button type="button" onClick={() => runCommand({ type: "end_discussion", payload: {} })}>End Discussion</button> : null}
+                              <button type="button" onClick={() => setShowHostAdmin((value) => !value)}>
+                                {showHostAdmin ? "Hide" : "Show"} Host Admin
+                              </button>
                             </p>
 
-                            <p>
-                              {round?.phase === "discussion" && round.discussionDeadlineMs !== null ? (
-                                <>
-                                  <button type="button" onClick={() => runCommand({ type: "extend_discussion", payload: { addSeconds: 30 } })}>+30s</button>{" "}
-                                  <button type="button" onClick={() => runCommand({ type: "extend_discussion", payload: { addSeconds: 60 } })}>+60s</button>
-                                </>
-                              ) : null}
-                            </p>
+                            {showHostAdmin ? (
+                              <div className="fade-in">
+                                <p>Quick actions</p>
+                                <p>
+                                  {canHostRevealQuestion ? <button type="button" onClick={() => runCommand({ type: "reveal_question", payload: {} })}>Reveal Question</button> : null}
+                                  {canHostRevealNextAnswer ? <button type="button" onClick={() => runCommand({ type: "reveal_next_answer", payload: {} })}>Next Answer</button> : null}
+                                  {canHostStartDiscussion ? <button type="button" onClick={() => runCommand({ type: "start_discussion", payload: {} })}>Start Discussion</button> : null}
+                                  {canHostEndDiscussion ? <button type="button" onClick={() => runCommand({ type: "end_discussion", payload: {} })}>End Discussion</button> : null}
+                                </p>
 
-                            <p>
-                              {canHostCloseVoting ? (
-                                <button type="button" onClick={() => runCommand({ type: "close_voting", payload: { allowMissingVotes: false } })}>Close Voting</button>
-                              ) : null}
-                              {canHostFinalizeRound ? (
-                                <button type="button" onClick={() => runCommand({ type: "finalize_round", payload: {} })}>Finalize Round</button>
-                              ) : null}
-                              {canHostRestartGame ? (
-                                <button type="button" onClick={() => runCommand({ type: "restart_game", payload: {} })}>Play Again</button>
-                              ) : null}
-                            </p>
+                                <p>
+                                  {round?.phase === "discussion" && round.discussionDeadlineMs !== null ? (
+                                    <>
+                                      <button type="button" onClick={() => runCommand({ type: "extend_discussion", payload: { addSeconds: 30 } })}>+30s</button>{" "}
+                                      <button type="button" onClick={() => runCommand({ type: "extend_discussion", payload: { addSeconds: 60 } })}>+60s</button>
+                                    </>
+                                  ) : null}
+                                </p>
 
-                            {canHostCloseVoting && tieCandidates.length >= 2 ? (
-                              <div className="card slim-card">
-                                <p>Tie resolution</p>
-                                <p><button type="button" onClick={() => resolveTie("auto")}>Auto Random</button></p>
-                                {tieCandidates.map((playerId) => {
-                                  const displayName = snapshot?.players.find((player) => player.id === playerId)?.displayName ?? playerId;
-                                  return (
-                                    <p key={playerId}>
-                                      <button type="button" onClick={() => resolveTie(playerId)}>Eliminate {displayName}</button>
-                                    </p>
-                                  );
-                                })}
+                                <p>
+                                  {canHostCloseVoting ? (
+                                    <button type="button" onClick={() => runCommand({ type: "close_voting", payload: { allowMissingVotes: false } })}>Close Voting</button>
+                                  ) : null}
+                                  {canHostFinalizeRound ? (
+                                    <button type="button" onClick={finalizeRoundAndContinue}>Finalize Round</button>
+                                  ) : null}
+                                  {canHostRestartGame ? (
+                                    <button type="button" onClick={() => runCommand({ type: "restart_game", payload: {} })}>Play Again</button>
+                                  ) : null}
+                                </p>
+
+                                {canHostCloseVoting && tieCandidates.length >= 2 ? (
+                                  <div className="card slim-card">
+                                    <p>Tie resolution</p>
+                                    <p><button type="button" onClick={() => resolveTie("auto")}>Auto Random</button></p>
+                                    {tieCandidates.map((playerId) => {
+                                      const displayName = snapshot?.players.find((player) => player.id === playerId)?.displayName ?? playerId;
+                                      return (
+                                        <p key={playerId}>
+                                          <button type="button" onClick={() => resolveTie(playerId)}>Eliminate {displayName}</button>
+                                        </p>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
+
+                                {removablePlayers.length > 0 ? (
+                                  <p>
+                                    Remove
+                                    <select value={removePlayerId} onChange={(event) => setRemovePlayerId(event.target.value)}>
+                                      {removablePlayers.map((player) => (
+                                        <option key={player.id} value={player.id}>{player.displayName}</option>
+                                      ))}
+                                    </select>
+                                    <button type="button" disabled={removePlayerId.trim().length < 1} onClick={() => runCommand({ type: "remove_player", payload: { playerId: removePlayerId } })}>
+                                      Remove Player
+                                    </button>
+                                  </p>
+                                ) : null}
+
+                                {transferableHostPlayers.length > 0 ? (
+                                  <p>
+                                    Transfer host
+                                    <select value={transferHostId} onChange={(event) => setTransferHostId(event.target.value)}>
+                                      {transferableHostPlayers.map((player) => (
+                                        <option key={player.id} value={player.id}>{player.displayName}</option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      disabled={transferHostId.trim().length < 1}
+                                      onClick={() => runCommand({ type: "transfer_host", payload: { newHostId: transferHostId } })}
+                                    >
+                                      Transfer
+                                    </button>
+                                  </p>
+                                ) : null}
                               </div>
                             ) : null}
-
-                            {removablePlayers.length > 0 ? (
-                              <p>
-                                Remove
-                                <select value={removePlayerId} onChange={(event) => setRemovePlayerId(event.target.value)}>
-                                  {removablePlayers.map((player) => (
-                                    <option key={player.id} value={player.id}>{player.displayName}</option>
-                                  ))}
-                                </select>
-                                <button type="button" disabled={removePlayerId.trim().length < 1} onClick={() => runCommand({ type: "remove_player", payload: { playerId: removePlayerId } })}>
-                                  Remove Player
-                                </button>
-                              </p>
-                            ) : null}
-
-                            {transferableHostPlayers.length > 0 ? (
-                              <p>
-                                Transfer host
-                                <select value={transferHostId} onChange={(event) => setTransferHostId(event.target.value)}>
-                                  {transferableHostPlayers.map((player) => (
-                                    <option key={player.id} value={player.id}>{player.displayName}</option>
-                                  ))}
-                                </select>
-                                <button
-                                  type="button"
-                                  disabled={transferHostId.trim().length < 1}
-                                  onClick={() => runCommand({ type: "transfer_host", payload: { newHostId: transferHostId } })}
-                                >
-                                  Transfer
-                                </button>
-                              </p>
-                            ) : null}
-                          </div>
+                          </>
                         ) : null}
                       </aside>
                     ) : null}
