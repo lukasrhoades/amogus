@@ -206,3 +206,10 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - `package.json` script: `prisma:migrate:deploy`
 - `README.md` with local run and hosted deployment steps
 - `.env.example` with `DATABASE_URL` and `GAME_SESSION_REPO` defaults.
+
+## 15. Host-Only Ops Docs Update
+- `README.md` now reflects active hosting setup (`Netlify + Neon`) and removes end-user setup instructions.
+- README now focuses on host runbook items:
+- production env vars
+- migration command (`prisma:migrate:deploy`)
+- host-only local development flow

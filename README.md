@@ -2,45 +2,33 @@
 
 Playable web app for the Full Squad Gaming impostor questions format.
 
-## Local Run
+## Live Deployment
 
-1. Install deps:
-```bash
-npm install
-```
-2. Create env file:
-```bash
-cp .env.example .env.local
-```
-3. Set `DATABASE_URL` in `.env.local`.
-4. Generate Prisma client and migrate:
-```bash
-npm run prisma:generate
-npm run prisma:migrate:dev -- --name init
-```
-5. Start app:
-```bash
-npm run dev
-```
+- Hosting: Netlify
+- Database: Neon Postgres
+- Players only need the live URL in a browser (no installs).
 
-## Public Deployment (Vercel + Postgres)
+## Host Operations
 
-1. Create a hosted Postgres database (for example Supabase or Neon).
-2. Push this repo to GitHub.
-3. Import repo into Vercel.
-4. Configure environment variables in Vercel:
-- `DATABASE_URL=<your pooled postgres url>`
+### Production environment variables
+- `DATABASE_URL=<neon_connection_string>`
 - `GAME_SESSION_REPO=prisma`
-5. Deploy.
-6. Run migrations against production DB:
+
+### Apply database migrations
+Run from repo root whenever schema/migrations change:
 ```bash
+export DATABASE_URL="YOUR_NEON_CONNECTION_STRING"
 npm run prisma:migrate:deploy
 ```
 
-Notes:
-- In production, runtime enforces `GAME_SESSION_REPO=prisma`.
-- Share lobby links using the in-app `Copy Invite Link` button.
-- A running Postgres instance is required in production for persistent accounts/lobbies.
+### Local development (host only)
+```bash
+npm install
+cp .env.example .env.local
+npm run prisma:generate
+npm run prisma:migrate:dev -- --name init
+npm run dev
+```
 
 ## Quality Checks
 
