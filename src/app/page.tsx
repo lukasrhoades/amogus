@@ -268,6 +268,39 @@ export default function HomePage() {
   }, [mainView]);
 
   useEffect(() => {
+    if (session === null || snapshot === null) {
+      return;
+    }
+
+    const url = `/api/games/${snapshot.lobbyId}/commands`;
+    const payload = JSON.stringify({
+      type: "set_player_connection",
+      payload: { connected: false },
+    });
+
+    const sendDisconnect = () => {
+      if (navigator.sendBeacon !== undefined) {
+        const blob = new Blob([payload], { type: "application/json" });
+        navigator.sendBeacon(url, blob);
+        return;
+      }
+      void fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true,
+      });
+    };
+
+    window.addEventListener("pagehide", sendDisconnect);
+    window.addEventListener("beforeunload", sendDisconnect);
+    return () => {
+      window.removeEventListener("pagehide", sendDisconnect);
+      window.removeEventListener("beforeunload", sendDisconnect);
+    };
+  }, [session, snapshot?.lobbyId]);
+
+  useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -459,12 +492,12 @@ export default function HomePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            type: "leave_lobby",
-            payload: {},
+            type: "set_player_connection",
+            payload: { connected: false },
           }),
         });
       } catch {
-        // Ignore leave failures during logout cleanup.
+        // Ignore disconnect update failures during logout cleanup.
       }
     }
 
