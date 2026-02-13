@@ -311,6 +311,12 @@ button:disabled {
   font-size: 0.94rem;
 }
 
+.info-line {
+  margin-top: 0.6rem;
+  color: var(--ok);
+  font-size: 0.94rem;
+}
+
 .fade-in {
   animation: fadeIn 180ms ease;
 }

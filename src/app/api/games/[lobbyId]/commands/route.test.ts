@@ -146,6 +146,31 @@ describe("game command route", () => {
     expect(response.status).toBe(403);
   });
 
+  it("allows host to transfer host role to another connected player", async () => {
+    await setupLobby("demo-lobby");
+    const hostCookie = await authCookieFor(hostUser);
+
+    const transfer = await postCommand(
+      "demo-lobby",
+      {
+        type: "transfer_host",
+        payload: {
+          newHostId: "p2",
+        },
+      },
+      hostCookie,
+    );
+
+    expect(transfer.status).toBe(200);
+    const json = (await transfer.json()) as {
+      state: {
+        players: Array<{ id: string; isHost: boolean }>;
+      };
+    };
+    expect(json.state.players.find((player) => player.id === "p1")?.isHost).toBe(false);
+    expect(json.state.players.find((player) => player.id === "p2")?.isHost).toBe(true);
+  });
+
   it("runs host start_round and player submit/cast commands using session identity", async () => {
     await setupLobby("demo-lobby");
     const hostCookie = await authCookieFor(hostUser);

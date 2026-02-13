@@ -122,7 +122,7 @@ describe("game read route viewer prompts", () => {
     );
     const p2Json = (await p2View.json()) as { viewerRound: { role: string | null; prompt: string | null } | null };
     expect(p2View.status).toBe(200);
-    expect(p2Json.viewerRound?.role).toBe("impostor");
+    expect(p2Json.viewerRound?.role).toBeNull();
     expect(p2Json.viewerRound?.prompt).toBe("Impostor Prompt");
 
     const p3View = await getLobby(
@@ -134,7 +134,7 @@ describe("game read route viewer prompts", () => {
     );
     const p3Json = (await p3View.json()) as { viewerRound: { role: string | null; prompt: string | null } | null };
     expect(p3View.status).toBe(200);
-    expect(p3Json.viewerRound?.role).toBe("crew");
+    expect(p3Json.viewerRound?.role).toBeNull();
     expect(p3Json.viewerRound?.prompt).toBe("Crew Prompt");
   });
 

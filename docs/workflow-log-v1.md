@@ -240,3 +240,19 @@ Pre/post contracts are documented as code comments and result/error types in `sr
 - host-only progress indicators use `OK/X` per player and progress bars for answer/vote phases
 - host pre-game flow is preset-first, with advanced settings hidden behind an edit toggle
 - in-game host actions moved behind a toggleable admin drawer with quick actions + advanced controls.
+
+## 18. Round Result + Messaging + Host Transfer
+- Restored visible round-result presentation in `src/app/page.tsx`:
+- added explicit round-result card with eliminated player and revealed roles
+- preserved answer reveal flow in-game.
+- Added clear player submission confirmations in `src/app/page.tsx`:
+- successful `submit_answer` -> \"Your answer has been submitted.\"
+- successful `cast_vote` -> \"Your vote has been submitted.\"
+- Added plain-English error mapping for command and request failures (no raw error-code display).
+- Added scoreboard toggle button in lobby room (`Show/Hide Scoreboard`) for players and host.
+- Implemented direct host transfer from host admin controls:
+- new domain transition `transferHost` in `src/domain/game/state-machine.ts`
+- new service method `transferHost` in `src/application/game-session-service.ts`
+- new host command `transfer_host` in `src/app/api/games/[lobbyId]/commands/route.ts`
+- new host admin dropdown/button in `src/app/page.tsx`
+- route integration test added in `src/app/api/games/[lobbyId]/commands/route.test.ts`.

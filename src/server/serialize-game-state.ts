@@ -119,7 +119,7 @@ export function serializeGameState(state: GameState, viewerPlayerId?: string): S
           return {
             viewerPlayerId: viewer.id,
             isActive: true,
-            role,
+            role: state.currentRound.phase === "prompting" ? null : role,
             prompt: promptForRole(state.currentRound.selectedQuestionPair, role),
           };
         })();

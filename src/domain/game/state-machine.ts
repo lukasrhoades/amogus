@@ -1011,3 +1011,37 @@ export function extendHostDisconnectPause(state: GameState): Result<GameState> {
     },
   });
 }
+
+export function transferHost(state: GameState, newHostId: PlayerId): Result<GameState> {
+  const currentHostId = getHostId(state);
+  if (currentHostId === null) {
+    return err("invalid_round", "No host is present in lobby state");
+  }
+
+  const currentHost = state.players[currentHostId];
+  const nextHost = state.players[newHostId];
+  if (currentHost === undefined || nextHost === undefined) {
+    return err("invalid_host_transfer_vote", "Host transfer target does not exist");
+  }
+  if (nextHost.isHost) {
+    return err("invalid_host_transfer_vote", "Selected player is already host");
+  }
+  if (!nextHost.connected) {
+    return err("invalid_host_transfer_vote", "Selected player must be connected");
+  }
+
+  return ok({
+    ...state,
+    players: Object.fromEntries(
+      Object.entries(state.players).map(([id, player]) => {
+        if (id === currentHostId) {
+          return [id, { ...player, isHost: false }];
+        }
+        if (id === newHostId) {
+          return [id, { ...player, isHost: true }];
+        }
+        return [id, player];
+      }),
+    ),
+  });
+}

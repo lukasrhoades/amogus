@@ -119,6 +119,7 @@ type CommandPayload =
   | { type: "close_voting"; payload: { allowMissingVotes: boolean; tieBreakLoserId?: string } }
   | { type: "finalize_round"; payload: Record<string, never> }
   | { type: "restart_game"; payload: Record<string, never> }
+  | { type: "transfer_host"; payload: { newHostId: string } }
   | {
       type: "update_settings";
       payload: {
@@ -161,6 +162,7 @@ export default function HomePage() {
   const [lobbies, setLobbies] = useState<LobbyListItem[]>([]);
 
   const [removePlayerId, setRemovePlayerId] = useState<string>("");
+  const [transferHostId, setTransferHostId] = useState<string>("");
   const [answerText, setAnswerText] = useState<string>("");
   const [voteTargetId, setVoteTargetId] = useState<string>("");
 
@@ -195,6 +197,8 @@ export default function HomePage() {
   const [nowMs, setNowMs] = useState<number>(Date.now());
 
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [infoMessage, setInfoMessage] = useState<string>("");
+  const [showScoreboard, setShowScoreboard] = useState<boolean>(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -282,6 +286,7 @@ export default function HomePage() {
   const canHostRestartGame = isHost && snapshot?.phase === "game_over";
 
   const removablePlayers = (snapshot?.players ?? []).filter((player) => player.id !== session?.userId);
+  const transferableHostPlayers = (snapshot?.players ?? []).filter((player) => player.id !== session?.userId && player.connected);
   const connectedPlayers = (snapshot?.players ?? []).filter((player) => player.connected);
   const canHostAttemptStartRound = canHostStartRound && connectedPlayers.length >= 4;
 
@@ -353,6 +358,16 @@ export default function HomePage() {
   }, [removePlayerId, removablePlayers]);
 
   useEffect(() => {
+    if (transferableHostPlayers.length === 0) {
+      setTransferHostId("");
+      return;
+    }
+    if (!transferableHostPlayers.some((player) => player.id === transferHostId)) {
+      setTransferHostId(transferableHostPlayers[0]?.id ?? "");
+    }
+  }, [transferHostId, transferableHostPlayers]);
+
+  useEffect(() => {
     if (snapshot === null) {
       return;
     }
@@ -386,8 +401,19 @@ export default function HomePage() {
     return snapshot.scoreboard[session.userId]?.totalPoints ?? 0;
   }, [session, snapshot]);
 
+  const roundDisplay = (() => {
+    if (snapshot === null) {
+      return "0/0";
+    }
+    if (snapshot.currentRound !== null) {
+      return `${snapshot.currentRound.roundNumber}/${snapshot.plannedRounds}`;
+    }
+    return `${snapshot.completedRounds}/${snapshot.plannedRounds}`;
+  })();
+
   async function authenticate() {
     setErrorMessage("");
+    setInfoMessage("");
     const response = await fetch("/api/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -396,7 +422,7 @@ export default function HomePage() {
 
     if (!response.ok) {
       const payload = (await response.json()) as { error: string; message?: string };
-      setErrorMessage(`Auth failed: ${payload.error} (${payload.message ?? ""})`);
+      setErrorMessage(describeRequestError("auth", payload.error, payload.message));
       return;
     }
 
@@ -415,6 +441,7 @@ export default function HomePage() {
     setLobbies([]);
     setMainView("lobbies");
     setErrorMessage("");
+    setInfoMessage("");
   }
 
   async function loadLobbies() {
@@ -430,6 +457,7 @@ export default function HomePage() {
 
   async function createLobby() {
     setErrorMessage("");
+    setInfoMessage("");
     const response = await fetch("/api/lobbies", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -438,7 +466,7 @@ export default function HomePage() {
 
     if (!response.ok) {
       const payload = (await response.json()) as { error: string; message?: string };
-      setErrorMessage(`Create failed: ${payload.error} (${payload.message ?? ""})`);
+      setErrorMessage(describeRequestError("create_lobby", payload.error, payload.message));
       return;
     }
 
@@ -448,6 +476,7 @@ export default function HomePage() {
 
   async function joinLobby(targetLobbyId: string = activeLobbyId) {
     setErrorMessage("");
+    setInfoMessage("");
     const response = await fetch(`/api/lobbies/${targetLobbyId}/join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -456,7 +485,7 @@ export default function HomePage() {
 
     if (!response.ok) {
       const payload = (await response.json()) as { error: string; message?: string };
-      setErrorMessage(`Join failed: ${payload.error} (${payload.message ?? ""})`);
+      setErrorMessage(describeRequestError("join_lobby", payload.error, payload.message));
       return;
     }
 
@@ -467,10 +496,11 @@ export default function HomePage() {
 
   async function deleteLobby() {
     setErrorMessage("");
+    setInfoMessage("");
     const response = await fetch(`/api/lobbies/${activeLobbyId}`, { method: "DELETE" });
     if (!response.ok) {
       const payload = (await response.json()) as { error: string; message?: string };
-      setErrorMessage(`Delete failed: ${payload.error} (${payload.message ?? ""})`);
+      setErrorMessage(describeRequestError("delete_lobby", payload.error, payload.message));
       return;
     }
 
@@ -503,6 +533,7 @@ export default function HomePage() {
     try {
       await navigator.clipboard.writeText(url.toString());
       setErrorMessage("");
+      setInfoMessage("Invite link copied.");
     } catch {
       setErrorMessage("Clipboard unavailable. Copy URL from browser bar.");
     }
@@ -510,6 +541,7 @@ export default function HomePage() {
 
   async function runCommand(command: CommandPayload) {
     setErrorMessage("");
+    setInfoMessage("");
     const response = await fetch(`/api/games/${activeLobbyId}/commands`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -528,6 +560,10 @@ export default function HomePage() {
     const payload = (await response.json()) as { state: LobbySnapshot };
     setSnapshot(payload.state);
     setTieCandidates([]);
+    const successMessage = describeCommandSuccess(command.type);
+    if (successMessage !== null) {
+      setInfoMessage(successMessage);
+    }
     await loadLobbies();
   }
 
@@ -574,6 +610,7 @@ export default function HomePage() {
 
   async function createQuestionPair() {
     setErrorMessage("");
+    setInfoMessage("");
     const response = await fetch("/api/question-pairs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -585,22 +622,25 @@ export default function HomePage() {
 
     if (!response.ok) {
       const payload = (await response.json()) as { error: string; message?: string };
-      setErrorMessage(`Create pair failed: ${payload.error} (${payload.message ?? ""})`);
+      setErrorMessage(describeRequestError("create_question_pair", payload.error, payload.message));
       return;
     }
 
     setPromptAText("");
     setPromptBText("");
+    setInfoMessage("Question pair added.");
     await loadQuestionPairs();
   }
 
   async function deleteQuestionPair(pairId: string) {
     setErrorMessage("");
+    setInfoMessage("");
     const response = await fetch(`/api/question-pairs/${pairId}`, { method: "DELETE" });
     if (!response.ok) {
-      setErrorMessage("Delete pair failed.");
+      setErrorMessage("Could not delete that question pair.");
       return;
     }
+    setInfoMessage("Question pair deleted.");
     await loadQuestionPairs();
   }
 
@@ -868,7 +908,7 @@ export default function HomePage() {
                     {lobbies.map((lobby) => (
                       <article key={lobby.lobbyId} className="lobby-card">
                         <h3>{lobby.lobbyId}</h3>
-                        <p>Players {lobby.connectedPlayerCount}/{lobby.playerCount}</p>
+                        <p>Players {lobby.playerCount}</p>
                         <p>Host {lobby.hostDisplayName ?? "unknown"}</p>
                         <p>Phase {lobby.phase}</p>
                         <p>
@@ -895,9 +935,12 @@ export default function HomePage() {
                           <p className="muted">{minimalPlayerText}</p>
                         </div>
                         <div>
-                          <p className="muted">Round {snapshot.completedRounds}/{snapshot.plannedRounds}</p>
+                          <p className="muted">Round {roundDisplay}</p>
                           <p>
-                            <button type="button" onClick={copyInviteLink}>Copy Invite Link</button>
+                            <button type="button" onClick={copyInviteLink}>Copy Invite Link</button>{" "}
+                            <button type="button" onClick={() => setShowScoreboard((value) => !value)}>
+                              {showScoreboard ? "Hide" : "Show"} Scoreboard
+                            </button>
                           </p>
                         </div>
                       </header>
@@ -1044,6 +1087,29 @@ export default function HomePage() {
 
                       {inGameRoom ? (
                         <div className="card slim-card">
+                          {snapshot.phase === "round_result" ? (
+                            <div className="card slim-card">
+                              <h3>Round Result</h3>
+                              <p>
+                                Eliminated:{" "}
+                                {round?.eliminatedPlayerId === null || round?.eliminatedPlayerId === undefined
+                                  ? "No one"
+                                  : snapshot.players.find((player) => player.id === round.eliminatedPlayerId)?.displayName ?? round.eliminatedPlayerId}
+                              </p>
+                              {round?.revealedRoles !== null && round?.revealedRoles !== undefined ? (
+                                <>
+                                  {Object.entries(round.revealedRoles).map(([playerId, role]) => (
+                                    <p key={playerId}>
+                                      {snapshot.players.find((player) => player.id === playerId)?.displayName ?? playerId}: {role}
+                                    </p>
+                                  ))}
+                                </>
+                              ) : (
+                                <p>Roles will appear once round result is finalized.</p>
+                              )}
+                            </div>
+                          ) : null}
+
                           {round !== null && round.trueQuestion !== null ? <p>Question: {round.trueQuestion}</p> : null}
                           {snapshot.viewerRound?.isActive ? (
                             <p>Your prompt: {snapshot.viewerRound.prompt ?? "(none)"}</p>
@@ -1098,6 +1164,17 @@ export default function HomePage() {
                               ) : null}
                             </>
                           ) : null}
+                        </div>
+                      ) : null}
+
+                      {showScoreboard ? (
+                        <div className="card slim-card">
+                          <h3>Scoreboard</h3>
+                          {snapshot.players.map((player) => (
+                            <p key={player.id}>
+                              {player.displayName}: {snapshot.scoreboard[player.id]?.totalPoints ?? 0}
+                            </p>
+                          ))}
                         </div>
                       ) : null}
 
@@ -1174,6 +1251,24 @@ export default function HomePage() {
                                 </button>
                               </p>
                             ) : null}
+
+                            {transferableHostPlayers.length > 0 ? (
+                              <p>
+                                Transfer host
+                                <select value={transferHostId} onChange={(event) => setTransferHostId(event.target.value)}>
+                                  {transferableHostPlayers.map((player) => (
+                                    <option key={player.id} value={player.id}>{player.displayName}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={transferHostId.trim().length < 1}
+                                  onClick={() => runCommand({ type: "transfer_host", payload: { newHostId: transferHostId } })}
+                                >
+                                  Transfer
+                                </button>
+                              </p>
+                            ) : null}
                           </div>
                         ) : null}
                       </aside>
@@ -1185,6 +1280,7 @@ export default function HomePage() {
           </>
         )}
 
+        {infoMessage !== "" ? <p className="info-line">{infoMessage}</p> : null}
         {errorMessage !== "" ? <p className="error-line">{errorMessage}</p> : null}
       </div>
     </main>
@@ -1203,13 +1299,66 @@ function describeCommandError(code: string, fallbackMessage: string): string {
     insufficient_players: "At least 4 active players are required.",
     question_pool_empty: "No available question pairs in the lobby pool.",
     player_not_active: "That player is not active in this round.",
+    answer_already_submitted: "You already submitted an answer for this round.",
+    player_already_voted: "You already submitted your vote for this round.",
+    invalid_host_transfer_vote: "Host transfer could not be completed.",
     vote_locked: "Vote changes are disabled for this round.",
     self_vote_forbidden: "You cannot vote for yourself.",
     game_not_found: "This lobby no longer exists.",
+    invalid_command: "That action is not valid.",
+    invalid_params: "The request used an invalid value.",
   };
   const translated = known[code];
   if (translated !== undefined) {
     return translated;
   }
-  return `Action failed: ${fallbackMessage}`;
+  return fallbackMessage;
+}
+
+function describeRequestError(scope: "auth" | "create_lobby" | "join_lobby" | "delete_lobby" | "create_question_pair", code: string, fallback?: string): string {
+  const known: Record<string, string> = {
+    no_session: "Please log in first.",
+    invalid_auth_request: "Please enter a valid username and password.",
+    invalid_credentials: "Incorrect username or password.",
+    user_exists: "That username is already taken.",
+    invalid_lobby_create_request: "Lobby ID must be 4-32 characters.",
+    lobby_already_exists: "A lobby with that ID already exists.",
+    game_not_found: "That lobby was not found.",
+    invalid_question_pair: "Please enter two valid prompts and targets.",
+    question_pair_not_found: "That question pair was not found.",
+    forbidden: "You do not have permission for this action.",
+  };
+  const translated = known[code];
+  if (translated !== undefined) {
+    return translated;
+  }
+  if (fallback !== undefined && fallback.trim().length > 0) {
+    return fallback;
+  }
+  if (scope === "auth") {
+    return "Could not complete sign-in right now.";
+  }
+  if (scope === "create_lobby") {
+    return "Could not create lobby right now.";
+  }
+  if (scope === "join_lobby") {
+    return "Could not join that lobby right now.";
+  }
+  if (scope === "delete_lobby") {
+    return "Could not delete that lobby right now.";
+  }
+  return "Could not save question pair right now.";
+}
+
+function describeCommandSuccess(commandType: CommandPayload["type"]): string | null {
+  if (commandType === "cast_vote") {
+    return "Your vote has been submitted.";
+  }
+  if (commandType === "submit_answer") {
+    return "Your answer has been submitted.";
+  }
+  if (commandType === "transfer_host") {
+    return "Host has been transferred.";
+  }
+  return null;
 }

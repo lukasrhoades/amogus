@@ -23,6 +23,7 @@ import {
   finalizeRound,
   computeWinnerSummary,
   restartGame,
+  transferHost,
   removePlayer,
   setPlayerConnection,
   revealNextAnswer,
@@ -624,6 +625,21 @@ export class GameSessionService {
     }
 
     const next = extendHostDisconnectPause(stateResult.value);
+    if (!next.ok) {
+      return fromDomain(next);
+    }
+
+    await this.saveAndNotify(next.value);
+    return ok(next.value);
+  }
+
+  async transferHost(lobbyId: LobbyId, newHostId: PlayerId): Promise<ServiceResult<GameState>> {
+    const stateResult = await this.get(lobbyId);
+    if (!stateResult.ok) {
+      return stateResult;
+    }
+
+    const next = transferHost(stateResult.value, newHostId);
     if (!next.ok) {
       return fromDomain(next);
     }
